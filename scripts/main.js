@@ -4,13 +4,15 @@
  */
 
 import { MODULE_ID, HOOKS, SETTINGS } from './constants.js';
-import { registerSettings, onRangeSettingChange, applyWalkSpeed } from './settings.js';
+import { registerSettings, onRangeSettingChange, onSoundSettingChange, applyWalkSpeed } from './settings.js';
 import { installTokenMixin } from './token-mixin.js';
 import { installRulerMixin } from './ruler-mixin.js';
 import { rangeOverlay } from './overlay.js';
 import { refreshTrails, forgetTrails, trailSnapshot } from './trail.js';
 import { getMovementRanges, getSpeed } from './speed.js';
-import { preloadStepSounds } from './sounds.js';
+import { preloadStepSounds, stepSources } from './sounds.js';
+import { armorClassOf } from './armor.js';
+import { registerTokenConfig } from './token-config.js';
 import { SYSTEM_PRESETS } from './systems.js';
 import { registerFollow } from './follow.js';
 import { forgetRoutes } from './pathfinding.js';
@@ -37,12 +39,18 @@ Hooks.once('init', () => {
   });
 
   registerFollow();
+  registerTokenConfig();
+  onSoundSettingChange(() => { if (game.ready) preloadStepSounds(); });
 
   game.modules.get(MODULE_ID).api = Object.freeze({
     hooks: HOOKS,
     presets: SYSTEM_PRESETS,
     getSpeed,
     getMovementRanges,
+    /** What a token's steps sound like: 'unarmored', 'light', 'medium' or 'heavy'. */
+    getArmorClass: (token) => armorClassOf(token),
+    /** The sound files a token's steps are drawn from, for this user. */
+    getStepSounds: (token) => [...stepSources(token)],
     /** Redraw the range if one is showing, e.g. after changing an actor's speed. */
     refreshRange: () => rangeOverlay.refresh(),
     /** What the range overlay is showing right now, as plain data; null if nothing. */

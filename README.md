@@ -3,7 +3,7 @@
 Makes moving a token feel like moving a miniature, on any game system, for Foundry VTT v14.
 
 - **Lift and hop.** A moving token rises off the map, hops from space to space and lands. Or pick the glide: lift once, slide, set down.
-- **Step sounds.** A soft footfall each time a token you can see lands on a space. Built-in sound, or your own file.
+- **Step sounds.** A footstep each time a token you can see lands on a space, and it sounds like what the token wears: cloth when unarmored, leather in light armor, leather and mail in medium, plate in heavy. Or one sound for everyone, or your own file.
 - **Reachable spaces.** While you drag a token, the spaces it can get to light up as tiles with a soft glowing edge, in bands: its move, then a dash (or a second and third Stride in Pathfinder and Starfinder 2e). The route you are dragging is a lit strip with a ring on every step, and it stays under the token as it walks, dimming behind it.
 - **A way round.** When the straight route is blocked, the cheapest route round is planned for you.
 - **System-agnostic.** Speeds are read from a data path on the actor. Presets cover common systems; one setting covers the rest.
@@ -169,11 +169,15 @@ In combat, the range shrinks by what the token has already moved this turn, usin
 
 ## Settings
 
-Per user: find a way round (pathfinding) on or off, animation style (hop, glide, or Foundry default), lift height and zoom, step sounds on or off and their volume (they play on Foundry's Interface audio channel), whether to show reachable spaces, range style (tiles or flat), animate the range, light up the route, colour scheme, band colours and opacity.
+Per user: find a way round (pathfinding) on or off, animation style (hop, glide, or Foundry default), lift height and zoom, step sounds on or off, their volume (they play on Foundry's Interface audio channel) and which footsteps you hear (matched to each token's armor, one armor class for everyone, or the original tap), whether to show reachable spaces, range style (tiles or flat), animate the range, light up the route, colour scheme, band colours and opacity.
 
 Per world: walk speed (how fast tokens travel, in spaces per second; Foundry's own is 6), custom step sound, speed data path and unit, fallback speed, range bands (for example `1, 2, 3`), subtract movement already used, only show in combat, and the largest range to draw.
 
 ![Settings: walk speed, step sounds and their volume](docs/screenshots/04-settings-animation.jpg)
+
+Per token: Step sound, on the Identity tab of Token Configuration. It says what that token's footsteps sound like when the actor has no armor to read, which is most monsters and NPCs. Eight steps of each set, unarmored through heavy: [armor-steps.mp3](docs/media/armor-steps.mp3).
+
+![Token Configuration: Step sound](docs/screenshots/14-token-step-sound.jpg)
 
 ![Settings: colours](docs/screenshots/05-settings-colours.jpg)
 
@@ -187,12 +191,19 @@ Hooks.on('scorpious187s-token-movement.getMovementRanges', (tokenDocument, actio
   if (tokenDocument.actor?.statuses.has('grappled')) ranges.push({ distance: 5, color: 0xff0000 });
 });
 
+// Say what a token's steps sound like: 'unarmored', 'light', 'medium' or 'heavy'.
+Hooks.on('scorpious187s-token-movement.getArmorClass', (tokenDocument, result) => {
+  if (tokenDocument.actor?.type === 'vehicle') result.armor = 'heavy';
+});
+
 // Fired on every client each time an animated token lands on a space.
 Hooks.on('scorpious187s-token-movement.step', (token, index) => {});
 
 const api = game.modules.get('scorpious187s-token-movement').api;
 api.getSpeed(token, 'walk');          // scene units, 0 if unknown
 api.getMovementRanges(token, 'walk'); // [{distance, color, alpha}]
+api.getArmorClass(token);             // 'unarmored' | 'light' | 'medium' | 'heavy'
+api.getStepSounds(token);             // the files this token's steps are drawn from
 api.pinRange(token);                  // or api.pinRange() to unpin
 api.refreshRange();
 api.rangeSnapshot();                  // what the overlay shows now, as plain data; null if nothing
@@ -204,6 +215,7 @@ Flying, swimming, burrowing and driving glide rather than hop and make no footst
 ## Not yet
 
 - Gridless scenes get the animation but no range overlay.
+- Armor is read from the actor only in D&D 5e, Pathfinder 2e and Starfinder 2e. In other systems, and for creatures with no armor item, a token is unarmored until you set its step sound in Token Configuration.
 - Pathfinding is planned on the flat: a leg that changes elevation is left as core's straight line.
 - Other players do not see your overlay, only core's ruler.
 - A route another player is still planning is drawn by core's ruler in every style. Once their token walks, its trail is drawn here like any other.
@@ -213,7 +225,8 @@ Flying, swimming, burrowing and driving glide rather than hop and make no footst
 
 ```
 node tools/check.mjs        # manifest, strings, and the range search against Foundry's own grid maths
-node tools/gen-sounds.mjs   # regenerate the built-in step sounds (synthesised, no third-party audio)
+node tools/gen-sounds.mjs   # regenerate the classic tap (synthesised, no third-party audio)
+node tools/build-step-sounds.mjs <packs>   # rebuild the armor steps from the unpacked source packs; needs ffmpeg
 ```
 
 `check.mjs` imports the real grid classes from a local Foundry v14 install when it finds one and compares every space within range against `grid.measurePath`, for each diagonal rule and each hex layout.

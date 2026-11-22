@@ -14,10 +14,16 @@
  * Values may be a number, a numeric string, or an object carrying the number
  * in `value` or `total` — see `readNumber`.
  *
+ * `armor` reads what the actor is wearing, for the step sounds: it returns
+ * the system's own word for the armor (see `armorCategory`) or nothing.
+ *
  * Verified against installed systems: dnd5e 6.1, pf2e 8.7, sf2e 1.7, D35E 3.1.
  * The rest are best-effort from each system's published data model; a path
  * that does not resolve simply falls through to the fallback speed.
  */
+
+/** pf2e and sf2e: the equipped armor item says which category it is in. */
+const wornArmorCategory = (actor) => actor?.wornArmor?.category ?? actor?.wornArmor?.system?.category;
 
 export const SYSTEM_PRESETS = Object.freeze({
   dnd5e: {
@@ -26,6 +32,8 @@ export const SYSTEM_PRESETS = Object.freeze({
       'system.attributes.movement.{action}',        // 5.x and earlier
     ],
     unit: 'distance',
+    // The armor the system counted towards AC; natural armor is not worn.
+    armor: (actor) => actor?.system?.attributes?.ac?.equippedArmor?.system?.type?.value,
   },
   pf2e: {
     paths: [
@@ -36,6 +44,7 @@ export const SYSTEM_PRESETS = Object.freeze({
     unit: 'distance',
     bands: [1, 2, 3],
     colors: [0x4cd964, 0xffd23f, 0xff5a4f],
+    armor: wornArmorCategory,
   },
   sf2e: {
     paths: [
@@ -46,6 +55,7 @@ export const SYSTEM_PRESETS = Object.freeze({
     unit: 'distance',
     bands: [1, 2, 3],
     colors: [0x4cd964, 0xffd23f, 0xff5a4f],
+    armor: wornArmorCategory,
   },
   pf1: {
     paths: ['system.attributes.speed.{action}.total'],
@@ -72,6 +82,21 @@ export const SYSTEM_PRESETS = Object.freeze({
     unit: 'spaces',
   },
 });
+
+/**
+ * Turn a system's word for a kind of armor into one of this module's classes.
+ * Systems agree on the three weights and differ in the rest ("light-barding",
+ * "heavyArmor", "natural"), so the weight is looked for inside the word.
+ * @param {unknown} value
+ * @returns {'unarmored'|'light'|'medium'|'heavy'|null}  null if it names none
+ */
+export function armorCategory(value) {
+  if (typeof value !== 'string') return null;
+  const text = value.toLowerCase();
+  if (text.includes('unarmo')) return 'unarmored';
+  for (const weight of ['heavy', 'medium', 'light']) if (text.includes(weight)) return weight;
+  return null;
+}
 
 /** Bands drawn when neither the world setting nor the system preset says. */
 export const DEFAULT_BANDS = Object.freeze([1, 2]);

@@ -177,7 +177,7 @@ function tick(token, to, link, style, animation) {
   if (landed > link.landed) {
     link.landed = landed;
     state.steps++;
-    if (link.stepping && token.visible) playStep(state.steps);
+    if (link.stepping && token.visible) playStep(state.steps, token);
     Hooks.callAll(HOOKS.step, token, state.steps);
   }
 

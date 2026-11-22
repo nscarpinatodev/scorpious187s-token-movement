@@ -1,4 +1,4 @@
-import { MODULE_ID, SETTINGS, ANIMATION_STYLES, CORE_WALK_SPEED } from './constants.js';
+import { MODULE_ID, SETTINGS, ANIMATION_STYLES, CORE_WALK_SPEED, STEP_SOUND_AUTO } from './constants.js';
 
 const L = (key) => `S187MOVE.Settings.${key}`;
 
@@ -36,6 +36,15 @@ export function onRangeSettingChange(fn) {
 }
 function rangeChanged() {
   for (const fn of rangeListeners) fn();
+}
+
+/** Callbacks run when the choice of step sound changes, to fetch the new files. */
+const soundListeners = new Set();
+export function onSoundSettingChange(fn) {
+  soundListeners.add(fn);
+}
+function soundChanged() {
+  for (const fn of soundListeners) fn();
 }
 
 export function registerSettings() {
@@ -90,11 +99,26 @@ export function registerSettings() {
     default: 0.4,
     range: { min: 0, max: 1, step: 0.05 },
   });
+  register(SETTINGS.stepSoundSet, {
+    scope: 'client',
+    type: String,
+    default: STEP_SOUND_AUTO,
+    choices: {
+      [STEP_SOUND_AUTO]: L('stepSoundSet.Auto'),
+      unarmored: L('stepSoundSet.Unarmored'),
+      light: L('stepSoundSet.Light'),
+      medium: L('stepSoundSet.Medium'),
+      heavy: L('stepSoundSet.Heavy'),
+      classic: L('stepSoundSet.Classic'),
+    },
+    onChange: soundChanged,
+  });
   register(SETTINGS.stepSound, {
     scope: 'world',
     type: String,
     default: '',
     filePicker: 'audio',
+    onChange: soundChanged,
   });
 
   // ---- Pathfinding (per user: it changes how your own drags are planned)

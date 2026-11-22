@@ -61,7 +61,7 @@ for (const file of scripts) {
   });
 }
 
-const { SETTINGS, BUILT_IN_STEP_SOUNDS, MODULE_ID } = await import(pathToFileURL(join(root, 'scripts/constants.js')));
+const { SETTINGS, STEP_SOUND_SETS, ARMOR_CLASSES, MODULE_ID } = await import(pathToFileURL(join(root, 'scripts/constants.js')));
 const lang = JSON.parse(readFileSync(join(root, 'lang/en.json'), 'utf8'));
 
 check('every setting has a name and hint', () => {
@@ -77,15 +77,29 @@ check('every setting is registered', () => {
   }
 });
 check('built-in sounds exist', () => {
-  for (const src of BUILT_IN_STEP_SOUNDS) {
-    const relative = src.replace(`modules/${MODULE_ID}/`, '');
-    assert(existsSync(join(root, relative)), `missing ${relative} (run node tools/gen-sounds.mjs)`);
+  for (const [name, sources] of Object.entries(STEP_SOUND_SETS)) {
+    assert(sources.length >= 2, `${name} needs more than one variant`);
+    for (const src of sources) {
+      const relative = src.replace(`modules/${MODULE_ID}/`, '');
+      assert(existsSync(join(root, relative)), `missing ${relative} (see tools/build-step-sounds.mjs and tools/gen-sounds.mjs)`);
+    }
   }
+});
+check('every armor class has sounds, a setting choice and a token-config label', () => {
+  const source = readFileSync(join(root, 'scripts/settings.js'), 'utf8');
+  for (const name of ARMOR_CLASSES) {
+    assert(STEP_SOUND_SETS[name], `no step sounds for ${name}`);
+    assert(source.includes(`${name}: L('stepSoundSet.`), `settings.js offers no ${name} choice`);
+    const label = name[0].toUpperCase() + name.slice(1);
+    assert(lang.S187MOVE.Settings.stepSoundSet[label], `lang lacks stepSoundSet.${label}`);
+    assert(lang.S187MOVE.TokenConfig.armor[name], `lang lacks TokenConfig.armor.${name}`);
+  }
+  assert(lang.S187MOVE.TokenConfig.armor.detect, 'lang lacks TokenConfig.armor.detect');
 });
 
 /* ---------------- 2. Speed presets ---------------- */
 
-const { resolveSpeed, readNumber, parseBands, SYSTEM_PRESETS } = await import(pathToFileURL(join(root, 'scripts/systems.js')));
+const { resolveSpeed, readNumber, parseBands, armorCategory, SYSTEM_PRESETS } = await import(pathToFileURL(join(root, 'scripts/systems.js')));
 
 check('readNumber unwraps values', () => {
   assert(readNumber(30) === 30, 'plain number');
@@ -95,6 +109,57 @@ check('readNumber unwraps values', () => {
   assert(readNumber(0) === null, 'zero is not a speed');
   assert(readNumber(null) === null, 'null');
   assert(readNumber({}) === null, 'empty object');
+});
+check('armor words map to classes', () => {
+  assert(armorCategory('light') === 'light', 'light');
+  assert(armorCategory('medium') === 'medium', 'medium');
+  assert(armorCategory('heavy') === 'heavy', 'heavy');
+  assert(armorCategory('unarmored') === 'unarmored', 'unarmored');
+  assert(armorCategory('light-barding') === 'light', 'pf2e barding');
+  assert(armorCategory('heavyArmor') === 'heavy', 'camel-cased');
+  assert(armorCategory('natural') === null, 'natural armor is not worn');
+  assert(armorCategory('shield') === null, 'a shield is not armor');
+  assert(armorCategory(undefined) === null, 'nothing worn');
+});
+check('armor is read where each system keeps it', () => {
+  const plate = { system: { attributes: { ac: { equippedArmor: { system: { type: { value: 'heavy' } } } } } } };
+  assert(armorCategory(SYSTEM_PRESETS.dnd5e.armor(plate)) === 'heavy', 'dnd5e plate');
+  assert(armorCategory(SYSTEM_PRESETS.dnd5e.armor({ system: { attributes: { ac: { equippedArmor: null } } } })) === null, 'dnd5e nothing equipped');
+  assert(armorCategory(SYSTEM_PRESETS.dnd5e.armor(null)) === null, 'dnd5e no actor');
+  for (const id of ['pf2e', 'sf2e']) {
+    assert(armorCategory(SYSTEM_PRESETS[id].armor({ wornArmor: { category: 'medium' } })) === 'medium', `${id} medium`);
+    assert(armorCategory(SYSTEM_PRESETS[id].armor({ wornArmor: null })) === null, `${id} nothing worn`);
+  }
+});
+
+const { armorClassOf } = await import(pathToFileURL(join(root, 'scripts/armor.js')));
+check('armor class: the token, then a hook, then the actor, then unarmored', () => {
+  const saved = { game: globalThis.game, Hooks: globalThis.Hooks };
+  let fromHook = null;
+  globalThis.game = { system: { id: 'pf2e' } };
+  globalThis.Hooks = { callAll: (name, document, result) => { if (fromHook) result.armor = fromHook; } };
+  try {
+    const actor = { wornArmor: { category: 'light' } };
+    const token = (armor) => ({ flags: armor === undefined ? {} : { [MODULE_ID]: { armor } }, actor });
+    assert(armorClassOf(token()) === 'light', 'read from the actor');
+    assert(armorClassOf({ document: token() }) === 'light', 'a placed token, not only its document');
+    assert(armorClassOf(token('heavy')) === 'heavy', 'the token says heavy');
+    assert(armorClassOf(token('')) === 'light', 'a blank choice means go by the actor');
+    assert(armorClassOf(token('plate')) === 'light', 'an unknown word is ignored');
+    fromHook = 'medium';
+    assert(armorClassOf(token()) === 'medium', 'a hook overrules the actor');
+    assert(armorClassOf(token('heavy')) === 'heavy', 'the token overrules a hook');
+    fromHook = 'tin';
+    assert(armorClassOf(token()) === 'light', 'a hook answering nonsense is ignored');
+    fromHook = null;
+    assert(armorClassOf({ flags: {}, actor: null }) === 'unarmored', 'no actor');
+    assert(armorClassOf({ flags: {}, actor: { get wornArmor() { throw new Error('not ready'); } } }) === 'unarmored', 'a throwing actor');
+    globalThis.game = { system: { id: 'some-other-system' } };
+    assert(armorClassOf(token()) === 'unarmored', 'an unknown system');
+    assert(armorClassOf(null) === 'unarmored', 'no token');
+  } finally {
+    globalThis.game = saved.game; globalThis.Hooks = saved.Hooks;
+  }
 });
 check('dnd5e 6.x and 5.x layouts', () => {
   const v6 = { system: { attributes: { movement: { speeds: { walk: 30, fly: 60, swim: 0 } } } } };

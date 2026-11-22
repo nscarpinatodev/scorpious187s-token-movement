@@ -24,9 +24,19 @@
         "Name": "Step sound volume",
         "Hint": "Multiplied by the Interface volume slider in Foundry's audio settings."
       },
+      "stepSoundSet": {
+        "Name": "Step sound",
+        "Hint": "Which footsteps you hear. Match what the token wears picks a set for each token from its armor: cloth for unarmored, leather for light, leather and mail for medium, plate for heavy. The armor is read from the actor in D&D 5e, Pathfinder 2e and Starfinder 2e, and a GM can set it for any token in Token Configuration. The other choices use one set for every token.",
+        "Auto": "Match what the token wears",
+        "Unarmored": "Unarmored for everyone",
+        "Light": "Light armor for everyone",
+        "Medium": "Medium armor for everyone",
+        "Heavy": "Heavy armor for everyone",
+        "Classic": "Classic tap (the original sound)"
+      },
       "stepSound": {
         "Name": "Custom step sound",
-        "Hint": "An audio file to play instead of the built-in step. Leave blank for the built-in sound."
+        "Hint": "An audio file to play for every step instead of the built-in sounds. Leave blank for the built-in sounds."
       },
       "rangeOverlay": {
         "Name": "Show reachable spaces",
@@ -110,6 +120,17 @@
       "routeMarkers": {
         "Name": "Light up the route",
         "Hint": "With the Tiles style, routes are drawn as a lit strip with a ring on every step, in place of Foundry's line and squares: the route you are dragging, and the trail a token follows as it walks, which dims behind it. Each stretch is in the colour of the band it falls in, so you can see where the move ends and the dash begins. The distance label stays. Untick to keep Foundry's own ruler."
+      }
+    },
+    "TokenConfig": {
+      "armor": {
+        "Label": "Step sound",
+        "Hint": "What this token's footsteps sound like. Go by what the actor wears reads the equipped armor where the game system has it, and is unarmored otherwise.",
+        "detect": "Go by what the actor wears",
+        "unarmored": "Unarmored",
+        "light": "Light armor",
+        "medium": "Medium armor",
+        "heavy": "Heavy armor"
       }
     },
     "Keybindings": {
