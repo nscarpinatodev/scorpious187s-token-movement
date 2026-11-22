@@ -18,11 +18,11 @@
       },
       "stepSounds": {
         "Name": "Step sounds",
-        "Hint": "Play a sound each time a moving token you can see lands on a space."
+        "Hint": "Play a sound each time a moving token you can see lands on a space. Untick to turn the sounds off for yourself. They play on Foundry's Interface audio channel."
       },
       "stepVolume": {
         "Name": "Step sound volume",
-        "Hint": "Scaled by Foundry's Interface volume."
+        "Hint": "Multiplied by the Interface volume slider in Foundry's audio settings."
       },
       "stepSound": {
         "Name": "Custom step sound",
@@ -87,6 +87,14 @@
         "Hint": "Match my Character HUD takes the band colours from the device you wear in Scorpious187's Sci-Fi Character HUD, and changes with it. If the HUD is not active, or you choose My own colours, the three colours below are used.",
         "Hud": "Match my Character HUD",
         "Custom": "My own colours"
+      },
+      "walkSpeed": {
+        "Name": "Walk speed",
+        "Hint": "How fast tokens travel across the map, in grid spaces per second, for everyone. Foundry's own speed is 6. Each movement action keeps its usual pace relative to this, so swimming and crawling stay at half speed. This is how the move is animated, not how far a token can go."
+      },
+      "pathfinding": {
+        "Name": "Find a way round",
+        "Hint": "When the straight route to where you are dragging is blocked, plan the cheapest route round instead of stopping at the obstacle. Turn this off if another module does your pathfinding."
       }
     },
     "Keybindings": {

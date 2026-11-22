@@ -14,6 +14,7 @@ import {
   shouldDecorate, decorate, onLinkSettled, applyLift, captureBaseScale,
 } from './animation.js';
 import { rangeOverlay } from './overlay.js';
+import { routeAround } from './pathfinding.js';
 
 const MIXED = Symbol.for(`${MODULE_ID}.mixed`);
 
@@ -46,6 +47,28 @@ export function installTokenMixin() {
     _refreshMeshSizeAndScale() {
       super._refreshMeshSizeAndScale();
       guarded('lift scale', () => captureBaseScale(this));
+    }
+
+    /**
+     * Whatever the class below finds is used as it is unless it was stopped
+     * short, in which case a way round is looked for.
+     * @override
+     */
+    findMovementPath(waypoints, options = {}) {
+      const direct = super.findMovementPath(waypoints, options);
+      return guarded('pathfinding',
+        () => routeAround(this, waypoints, options, direct, (w, o) => super.findMovementPath(w, o)),
+        direct);
+    }
+
+    /**
+     * Core refreshes the ruler whenever the route it is planning for a drag
+     * changes, so this is where the overlay hears about a new route.
+     * @override
+     */
+    _refreshRuler() {
+      super._refreshRuler();
+      guarded('range overlay', () => rangeOverlay.onPlanChanged(this));
     }
 
     /** @override */

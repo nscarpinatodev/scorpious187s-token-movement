@@ -6,6 +6,7 @@ export const SETTINGS = Object.freeze({
   animationStyle: 'animationStyle',
   liftHeight: 'liftHeight',
   liftScale: 'liftScale',
+  pathfinding: 'pathfinding',
   rangeOverlay: 'rangeOverlay',
   colorScheme: 'colorScheme',
   rangeColor: 'rangeColor',
@@ -16,6 +17,7 @@ export const SETTINGS = Object.freeze({
   stepVolume: 'stepVolume',
   // World-scoped: these decide what the rules are, not how they look.
   stepSound: 'stepSound',
+  walkSpeed: 'walkSpeed',
   speedPath: 'speedPath',
   speedUnit: 'speedUnit',
   defaultSpeed: 'defaultSpeed',
@@ -25,6 +27,9 @@ export const SETTINGS = Object.freeze({
   maxSpaces: 'maxSpaces',
   debug: 'debug',
 });
+
+/** Foundry's own token travel speed, in grid spaces per second. */
+export const CORE_WALK_SPEED = 6;
 
 export const ANIMATION_STYLES = Object.freeze({
   hop: 'hop',

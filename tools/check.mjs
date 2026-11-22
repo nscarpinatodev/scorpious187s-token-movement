@@ -128,7 +128,32 @@ check('unknown actor or preset resolves to null', () => {
 
 /* ---------------- 3. Reachability ---------------- */
 
-const { runToEnd, makeStepMetric, boundaryEdges } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
+const { runToEnd, makeStepMetric, boundaryEdges, summarisePath, runRoute, turningPoints } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
+
+check('a planned route is summed from its waypoints', () => {
+  const at = (i, j, cost) => ({ i, j, cost });
+  const toOffset = (w) => ({ i: w.i, j: w.j });
+  // two straight steps, then two diagonals priced 5 and 10
+  const route = [at(0, 0, 0), at(0, 1, 5), at(0, 2, 5), at(1, 3, 5), at(2, 4, 10)];
+  const summary = summarisePath(route, { toOffset });
+  assert(summary.cost === 25, `cost ${summary.cost}`);
+  assert(summary.diagonals === 2, `diagonals ${summary.diagonals}`);
+  assert(summarisePath([at(0, 0, 0)], { toOffset }).cost === 0, 'a route of one waypoint is free');
+  assert(summarisePath(route, { toOffset, square: false }).diagonals === 0, 'no diagonals on hex');
+  assert(summarisePath([at(0, 0, 0), at(3, 3, 0)], { toOffset, measured: () => false }).diagonals === 0,
+    'a teleport is not three diagonals');
+  assert(summarisePath([at(0, 0, 0), at(0, 1, Infinity)], { toOffset }).cost === Infinity, 'unpriceable step');
+  assert(summarisePath([at(0, 0, 0), at(0, 1, undefined)], { toOffset }).cost === Infinity, 'missing cost');
+});
+
+check('turning points are where a route changes direction', () => {
+  const c = (i, j) => ({ i, j });
+  const key = (cells) => cells.map((cell) => `${cell.i},${cell.j}`).join(' ');
+  assert(key(turningPoints([c(0, 0), c(0, 1), c(0, 2), c(0, 3)])) === '', 'a straight run has none');
+  assert(key(turningPoints([c(0, 0), c(0, 1), c(0, 2), c(1, 3), c(2, 4), c(2, 5)])) === '0,2 2,4', 'two turns');
+  assert(key(turningPoints([c(0, 0), c(1, 1)])) === '', 'a single step has none');
+  assert(key(turningPoints([c(0, 0)])) === '', 'nor does a single space');
+});
 
 check('boundaryEdges drops shared edges', () => {
   const square = (x, y) => [{ x, y }, { x: x + 100, y }, { x: x + 100, y: y + 100 }, { x, y: y + 100 }];
@@ -220,6 +245,93 @@ if (!foundry) {
     assert(close(open.get('20,21').cost, 5), 'adjacent space is one step without the wall');
     assert(walled.get('20,21').cost > 30, `expected a detour, got ${walled.get('20,21').cost}`);
     assert(!searchOn(grid, { i: 20, j: 20 }, 20, wall).has('20,21'), 'out of budget behind the wall');
+  });
+
+  const routeOn = (grid, start, goal, extra = {}) => runRoute({
+    start,
+    goal,
+    unit: grid.distance,
+    maxCost: 400,
+    neighbors: (offset) => grid.getAdjacentOffsets(offset),
+    step: makeStepMetric(grid, DIAGONALS),
+    edge: () => 1,
+    heuristic: (offset) => Math.max(Math.abs(offset.i - goal.i), Math.abs(offset.j - goal.j)),
+    ...extra,
+  });
+
+  for (const [name, rule] of Object.entries(DIAGONALS)) {
+    check(`route search, diagonals ${name}, costs what the range search says`, () => {
+      const grid = new SquareGrid({ size: 100, distance: 5, diagonals: rule });
+      const start = { i: 20, j: 20 };
+      const reached = searchOn(grid, start, 60);
+      const heuristic = rule === DIAGONALS.ILLEGAL
+        ? (goal) => (offset) => Math.abs(offset.i - goal.i) + Math.abs(offset.j - goal.j)
+        : (goal) => (offset) => Math.max(Math.abs(offset.i - goal.i), Math.abs(offset.j - goal.j));
+      for (const goal of [{ i: 20, j: 26 }, { i: 25, j: 25 }, { i: 17, j: 28 }, { i: 12, j: 19 }]) {
+        const route = routeOn(grid, start, goal, { heuristic: heuristic(goal) });
+        const expected = reached.get(`${goal.i},${goal.j}`).cost;
+        assert(route, `no route to ${goal.i},${goal.j}`);
+        assert(close(route.cost, expected), `to ${goal.i},${goal.j}: route ${route.cost}, range ${expected}`);
+        const first = route.cells[0];
+        const last = route.cells.at(-1);
+        assert((first.i === start.i) && (first.j === start.j) && (last.i === goal.i) && (last.j === goal.j),
+          'route runs from start to goal');
+        for (let n = 1; n < route.cells.length; n++) {
+          assert(grid.testAdjacency(route.cells[n - 1], route.cells[n]), 'every step is to an adjacent space');
+        }
+      }
+    });
+  }
+
+  check('a route goes round a wall and never through it', () => {
+    const grid = new SquareGrid({ size: 100, distance: 5, diagonals: DIAGONALS.ALTERNATING_1 });
+    // A wall along the east edge of column 20, spanning rows 15-25.
+    const wall = (from, to) => {
+      const crosses = (Math.min(from.j, to.j) === 20) && (Math.max(from.j, to.j) === 21);
+      const inSpan = [from.i, to.i].every((i) => (i >= 15) && (i <= 25));
+      return crosses && inSpan ? Infinity : 1;
+    };
+    const start = { i: 20, j: 20 };
+    const goal = { i: 20, j: 21 };
+    const route = routeOn(grid, start, goal, { edge: wall });
+    const expected = searchOn(grid, start, 400, wall).get('20,21').cost;
+    assert(route && close(route.cost, expected), `route ${route?.cost}, range search ${expected}`);
+    assert(route.cells.length > 6, 'it is a detour');
+    for (let n = 1; n < route.cells.length; n++) {
+      assert(Number.isFinite(wall(route.cells[n - 1], route.cells[n])), 'no step crosses the wall');
+    }
+    assert(turningPoints(route.cells).length >= 2, 'a detour has corners');
+  });
+
+  check('a route that does not exist is given up on', () => {
+    const grid = new SquareGrid({ size: 100, distance: 5, diagonals: DIAGONALS.EQUIDISTANT });
+    // The goal is boxed in on every side.
+    const boxed = (_from, to) => ((to.i === 30) && (to.j === 30) ? Infinity : 1);
+    const bounded = (offset) => grid.getAdjacentOffsets(offset)
+      .filter((next) => (next.i >= 0) && (next.i < 60) && (next.j >= 0) && (next.j < 60));
+    assert(routeOn(grid, { i: 20, j: 20 }, { i: 30, j: 30 }, { edge: boxed, neighbors: bounded }) === null,
+      'boxed-in goal');
+    assert(routeOn(grid, { i: 20, j: 20 }, { i: 20, j: 50 }, { maxCost: 100 }) === null, 'dearer than the limit');
+    assert(routeOn(grid, { i: 20, j: 20 }, { i: 20, j: 50 }, { maxNodes: 5 }) === null, 'too much searching');
+  });
+
+  check('hex route costs what the range search says', () => {
+    for (const columns of [false, true]) {
+      const grid = new HexagonalGrid({ size: 100, distance: 5, columns, even: false });
+      const start = { i: 20, j: 20 };
+      const reached = searchOn(grid, start, 60);
+      for (const goal of [{ i: 20, j: 27 }, { i: 26, j: 23 }, { i: 15, j: 17 }]) {
+        const target = grid.getCenterPoint(goal);
+        const heuristic = (offset) => {
+          const center = grid.getCenterPoint(offset);
+          return Math.hypot(center.x - target.x, center.y - target.y) / grid.size;
+        };
+        const route = routeOn(grid, start, goal, { heuristic });
+        const expected = reached.get(`${goal.i},${goal.j}`)?.cost;
+        assert(route && (expected !== undefined) && close(route.cost, expected),
+          `to ${goal.i},${goal.j}: route ${route?.cost}, range ${expected}`);
+      }
+    }
   });
 
   check('difficult terrain costs double', () => {

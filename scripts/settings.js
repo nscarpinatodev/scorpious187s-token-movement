@@ -1,4 +1,4 @@
-import { MODULE_ID, SETTINGS, ANIMATION_STYLES } from './constants.js';
+import { MODULE_ID, SETTINGS, ANIMATION_STYLES, CORE_WALK_SPEED } from './constants.js';
 
 const L = (key) => `S187MOVE.Settings.${key}`;
 
@@ -9,6 +9,24 @@ export function setting(key) {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Walk speed. Foundry has no setting for how fast tokens travel; the figure
+ * lives in CONFIG.Token.movement.defaultSpeed, and core and the game systems
+ * all read it from there. So that is where this setting is applied: every
+ * movement action keeps its own multiplier (swimming and crawling at half
+ * speed, and so on) on top of it.
+ *
+ * At Foundry's own value the CONFIG entry is left exactly as it was found, so
+ * a system or module that has set its own speed is not overruled by default.
+ */
+let configuredSpeed = null;
+export function applyWalkSpeed() {
+  const movement = CONFIG.Token.movement;
+  configuredSpeed ??= movement.defaultSpeed;
+  const chosen = Number(setting(SETTINGS.walkSpeed));
+  movement.defaultSpeed = (chosen > 0) && (chosen !== CORE_WALK_SPEED) ? chosen : configuredSpeed;
 }
 
 /** Callbacks run whenever a setting that affects the range overlay changes. */
@@ -54,6 +72,16 @@ export function registerSettings() {
     range: { min: 0, max: 0.3, step: 0.02 },
   });
 
+  // ---- Walk speed (world: every client has to animate a move at the same
+  // pace, or the token would be in different places on different screens)
+  register(SETTINGS.walkSpeed, {
+    scope: 'world',
+    type: Number,
+    default: CORE_WALK_SPEED,
+    range: { min: 2, max: 16, step: 0.5 },
+    onChange: applyWalkSpeed,
+  });
+
   // ---- Step sounds
   register(SETTINGS.stepSounds, { scope: 'client', type: Boolean, default: true });
   register(SETTINGS.stepVolume, {
@@ -68,6 +96,9 @@ export function registerSettings() {
     default: '',
     filePicker: 'audio',
   });
+
+  // ---- Pathfinding (per user: it changes how your own drags are planned)
+  register(SETTINGS.pathfinding, { scope: 'client', type: Boolean, default: true });
 
   // ---- Range overlay: appearance (per user)
   register(SETTINGS.rangeOverlay, {

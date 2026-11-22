@@ -4,7 +4,7 @@
  */
 
 import { MODULE_ID, HOOKS, SETTINGS } from './constants.js';
-import { registerSettings, onRangeSettingChange } from './settings.js';
+import { registerSettings, onRangeSettingChange, applyWalkSpeed } from './settings.js';
 import { installTokenMixin } from './token-mixin.js';
 import { rangeOverlay } from './overlay.js';
 import { getMovementRanges, getSpeed } from './speed.js';
@@ -53,6 +53,7 @@ Hooks.once('init', () => {
 // during `init`, and ours has to wrap whichever one won.
 Hooks.once('setup', () => {
   installTokenMixin();
+  applyWalkSpeed();
 });
 
 Hooks.once('ready', () => {

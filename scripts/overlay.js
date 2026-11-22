@@ -6,17 +6,24 @@
  * live grid, walls and terrain, and paints the answer on a grid highlight
  * layer — the same mechanism core's ruler uses for its path squares.
  *
- * Costs come from core. Each step is priced by asking the token to measure
- * that step with its own cost function, so difficult terrain, a system's
- * movement-action rules and anything a module layers on top are all honoured
- * without this module knowing about any of them.
+ * Whether a step is allowed and what it costs come from the token itself
+ * (see navigation.js), so difficult terrain, a system's movement rules and
+ * anything a module layers on top are all honoured without this module
+ * knowing about any of them.
+ *
+ * During a drag the overlay follows the route core is planning. When a drag
+ * starts it shows everything the token could reach. As the route grows it is
+ * redrawn from the route's end with whatever movement the route leaves, and
+ * the spaces that were reachable at the start but no longer are get dimmed —
+ * so the price of the chosen route is visible before the token is dropped.
  */
 
 import { MODULE_ID, SETTINGS } from './constants.js';
 import { setting } from './settings.js';
 import { guarded, log } from './logger.js';
 import { getMovementRanges, diagonalsThisTurn } from './speed.js';
-import { explore, makeStepMetric, boundaryEdges } from './reachability.js';
+import { explore, boundaryEdges, summarisePath } from './reachability.js';
+import { makeNavigator } from './navigation.js';
 
 const LAYER = `${MODULE_ID}.range`;
 
@@ -26,19 +33,76 @@ const FRAME_BUDGET_MS = 9;
 /** While a long search runs, redraw what is known so far this often, in ms. */
 const PARTIAL_DRAW_MS = 90;
 
+/** Tint for spaces the planned route has put out of reach. */
+const SPENT_COLOR = 0x10141c;
+
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
+/**
+ * @typedef {object} LivePlan   Where a drag's planned route has got to.
+ * @property {{x: number, y: number}} from  The route's last reachable position
+ * @property {string} action                Movement action at that point
+ * @property {number} spent                 Cost of the route so far, scene units
+ * @property {number} diagonals             Diagonal steps the route takes
+ * @property {string} signature             Changes when any of the above does
+ */
+
+/**
+ * Read the route core is planning for this user's drag of a token.
+ * @param {Token} token
+ * @returns {LivePlan|null|undefined}
+ *   null when there is no route yet (still on the starting space), undefined
+ *   while core is still searching for one.
+ */
+function readLivePlan(token) {
+  const planned = token._plannedMovement?.[game.user.id];
+  if (!planned) return null;
+  if (planned.searching) return undefined;
+  const path = planned.foundPath ?? [];
+  if (path.length < 2) return null;
+
+  // Core has already priced every step of the route, continuing from this
+  // turn's movement history, so its numbers are used as they are.
+  const grid = canvas.grid;
+  const document = token.document;
+  const toOffset = (waypoint) => {
+    const center = document.getCenterPoint(waypoint);
+    return grid.getOffset({ x: center.x, y: center.y });
+  };
+  const measured = (waypoint) => {
+    const config = CONFIG.Token.movement.actions[waypoint.action];
+    return !config?.teleport && (config?.measure !== false);
+  };
+  const { cost, diagonals } = summarisePath(path, { toOffset, measured, square: grid.isSquare });
+
+  const end = path.at(-1);
+  const source = document._source;
+  const atStart = (Math.round(end.x) === Math.round(source.x)) && (Math.round(end.y) === Math.round(source.y));
+  if (atStart && (cost === 0)) return null;
+
+  return {
+    from: { x: end.x, y: end.y },
+    action: end.action,
+    spent: cost,
+    diagonals,
+    signature: [Math.round(end.x), Math.round(end.y), end.action, cost.toFixed(3), diagonals].join('|'),
+  };
+}
 
 /**
  * Gather everything the search needs for one token, or null if there is
  * nothing to draw (gridless scene, unknown speed, teleporting…).
+ * @param {Token} token
+ * @param {LivePlan|null} [live]  Start from the end of a planned route
+ *   instead of from where the token stands.
  */
-function buildPlan(token) {
+function buildPlan(token, live = null) {
   if (!canvas.ready) return null;
   const grid = canvas.grid;
   if (grid.isGridless) return null;
 
   const document = token.document;
-  const action = token._getDragMovementAction?.() ?? document.movementAction;
+  const action = live?.action ?? token._getDragMovementAction?.() ?? document.movementAction;
   const actionConfig = CONFIG.Token.movement.actions[action];
   if (!actionConfig || actionConfig.teleport || (actionConfig.measure === false)) return null;
 
@@ -51,28 +115,19 @@ function buildPlan(token) {
     log.debug(`range ${ranges.at(-1).distance} clipped to ${cap}`);
     ranges = ranges.map((range) => ({ ...range, distance: Math.min(range.distance, cap) }));
   }
-  const maxCost = ranges.at(-1).distance;
 
-  // Everything is laid out relative to the token's snapped starting position.
-  // Space centres form a lattice on both square and hex grids, so the token's
-  // position for any other space is the start plus the difference of centres.
-  const source = document._source;
-  const anchor = document.getSnappedPosition({ x: source.x, y: source.y });
-  const tokenCenter = document.getCenterPoint({ x: anchor.x, y: anchor.y });
-  const start = grid.getOffset({ x: tokenCenter.x, y: tokenCenter.y });
-  const startCenter = grid.getCenterPoint(start);
+  // What the planned route has used is no longer available. Each band keeps
+  // its own colour as it shrinks; a band the route has used up drops out.
+  if (live) {
+    ranges = ranges
+      .map((range) => ({ ...range, distance: range.distance - live.spent }))
+      .filter((range) => range.distance > 0);
+  }
+  const maxCost = ranges.at(-1)?.distance ?? 0;
 
-  const deltas = new Map();
-  const deltaOf = (offset) => {
-    const key = `${offset.i},${offset.j}`;
-    let delta = deltas.get(key);
-    if (!delta) {
-      const center = grid.getCenterPoint(offset);
-      delta = { x: center.x - startCenter.x, y: center.y - startCenter.y };
-      deltas.set(key, delta);
-    }
-    return delta;
-  };
+  // Laid out from where the token stands, or from the end of the planned route.
+  const navigator = makeNavigator(token, { action, from: live?.from ?? null });
+  const { anchor, start, startCenter, deltaOf } = navigator;
 
   // The spaces a (possibly large) token covers, relative to its reference space.
   let occupied = guarded('token footprint',
@@ -83,58 +138,11 @@ function buildPlan(token) {
     return { x: center.x - startCenter.x, y: center.y - startCenter.y };
   });
 
-  // Can the token step from one space to the next? Rather than testing walls
-  // here, ask the token class to constrain the one-step path, exactly as a
-  // drag would. That is the system's own answer, so it already includes
-  // everything the system counts as blocking — walls, surfaces between
-  // levels, dnd5e's enemy-occupied spaces — and core's rule that a player's
-  // preview is only stopped by walls they have actually seen. It also honours
-  // the GM's "unconstrained movement" toggle through the drag options.
-  const constrainOptions = {
-    ...(guarded('constrain options', () => token._getDragConstrainOptions(), {}) ?? {}),
-    preview: true,
-  };
-  const blocked = (from, to) => {
-    const a = deltaOf(from);
-    const b = deltaOf(to);
-    const destination = { x: Math.round(anchor.x + b.x), y: Math.round(anchor.y + b.y) };
-    const [path] = token.constrainMovementPath([
-      { x: anchor.x + a.x, y: anchor.y + a.y, action, snapped: true },
-      { ...destination, action, snapped: true },
-    ], constrainOptions);
-    const end = path.at(-1);
-    // "Constrained" alone is not "blocked": a token whose centre sits exactly
-    // on a wall line is nudged by a pixel and still arrives.
-    return !end || (path.length < 2)
-      || (Math.abs(end.x - destination.x) > 1) || (Math.abs(end.y - destination.y) > 1);
-  };
-
   // Players are only shown spaces they have seen, so the tint never spills
   // into parts of the map that are still unexplored.
   const limited = !game.user.isGM && !!canvas.visibility?.tokenVision;
   const known = (point) => canvas.fog.isPointExplored(point)
     || canvas.visibility.testVisibility(point, { tolerance: 1 });
-
-  // Price of a step relative to open ground, straight from core's measurement.
-  const costFunction = guarded('movement cost function',
-    () => token._getMovementCostFunction({ ...(token._getDragMeasureOptions?.() ?? {}), preview: true }),
-    undefined);
-  const factor = (from, to) => {
-    const a = deltaOf(from);
-    const b = deltaOf(to);
-    const measured = document.measureMovementPath([
-      { x: anchor.x + a.x, y: anchor.y + a.y, action },
-      { x: anchor.x + b.x, y: anchor.y + b.y, action },
-    ], { cost: costFunction });
-    if (!(measured.distance > 0)) return 1;
-    return measured.cost / measured.distance;
-  };
-
-  const bounds = canvas.dimensions.rect;
-  const neighbors = (offset) => grid.getAdjacentOffsets(offset).filter((next) => {
-    const delta = deltaOf(next);
-    return bounds.contains(tokenCenter.x + delta.x, tokenCenter.y + delta.y);
-  });
 
   return {
     grid,
@@ -144,27 +152,28 @@ function buildPlan(token) {
     known,
     deltaOf,
     startCenter,
-    search: {
+    // With nothing left there is nothing to search; the caller still paints,
+    // because the spaces the route has cost are worth showing.
+    search: !ranges.length ? null : {
       start,
       maxCost,
       unit: grid.distance,
-      neighbors,
-      // The scene's grid carries the world's "Square Grid Diagonals" setting,
-      // so the rule in force is whatever the GM has chosen there. Under the
-      // alternating rules, carry on counting from the diagonals already taken
-      // this turn.
-      step: makeStepMetric(grid, CONST.GRID_DIAGONALS),
-      startParity: diagonalsThisTurn(token) % 2,
-      edge: (from, to) => (blocked(from, to) ? Infinity : factor(from, to)),
+      neighbors: navigator.neighbors,
+      step: navigator.step,
+      edge: navigator.edge,
+      // Under the alternating diagonal rules, carry on counting from the
+      // diagonals already taken this turn and along the planned route.
+      startParity: (diagonalsThisTurn(token) + (live?.diagonals ?? 0)) % 2,
     },
   };
 }
 
-/** Paint a finished search onto the highlight layer. */
-function draw(plan, reached) {
+/**
+ * Turn a search result into the grid spaces to paint.
+ * @returns {Map<string, {offset: object, band: number, vertices: object[]}>}
+ */
+function collectCells(plan, reached) {
   const { grid, ranges, footprint, limited, known, deltaOf, startCenter } = plan;
-  const layer = canvas.interface.grid.addHighlightLayer(LAYER);
-  layer.clear();
 
   // Which band does each grid space fall in? A large token covers several
   // spaces per position; a space takes the nearest band of any that cover it.
@@ -192,12 +201,35 @@ function draw(plan, reached) {
   for (const [key, cell] of cells) {
     const center = grid.getCenterPoint(cell.offset);
     if (!bounds.contains(center.x, center.y) || (limited && !known(center))) cells.delete(key);
+    else cell.vertices = grid.getVertices(cell.offset);
+  }
+  return cells;
+}
+
+/**
+ * Paint the highlight layer.
+ * @param {object} plan
+ * @param {Map<string, object>} cells       Spaces reachable now
+ * @param {Map<string, object>|null} before Spaces that were reachable when the
+ *   drag began; those no longer in `cells` are dimmed.
+ */
+function paint(plan, cells, before = null) {
+  const { ranges } = plan;
+  const layer = canvas.interface.grid.addHighlightLayer(LAYER);
+  layer.clear();
+  layer.lineStyle(0);
+
+  // What the route has cost: reachable at the start, not any more.
+  if (before) {
+    const alpha = Math.min((setting(SETTINGS.rangeOpacity) ?? 0.28) * 1.25, 0.6);
+    layer.beginFill(SPENT_COLOR, alpha);
+    for (const [key, cell] of before) {
+      if (!cells.has(key)) layer.drawPolygon(cell.vertices);
+    }
+    layer.endFill();
   }
 
-  for (const cell of cells.values()) cell.vertices = grid.getVertices(cell.offset);
-
   // Fills, one band at a time so each batch shares a style.
-  layer.lineStyle(0);
   for (let band = 0; band < ranges.length; band++) {
     const { color, alpha } = ranges[band];
     layer.beginFill(color, alpha);
@@ -233,6 +265,12 @@ class RangeOverlay {
   /** A token whose range is pinned with the keybinding. */
   #pinned = null;
 
+  /** What the dragged token could reach when the drag began. */
+  #baseline = null;
+
+  /** The planned route the overlay currently reflects ("start" = none). */
+  #signature = null;
+
   get pinned() {
     return this.#pinned;
   }
@@ -240,13 +278,32 @@ class RangeOverlay {
   onDragStart(token) {
     if (!setting(SETTINGS.rangeOverlay)) return;
     this.#dragged = token;
+    this.#baseline = null;
+    this.#signature = 'start';
     this.#show(token);
   }
 
   onDragEnd(token) {
     if (this.#dragged !== token) return;
     this.#dragged = null;
+    this.#baseline = null;
+    this.#signature = null;
     this.refresh();
+  }
+
+  /**
+   * Core has (re)planned the dragged token's route. Called whenever the
+   * token's ruler refreshes, which is often; nothing is recomputed unless the
+   * route's end or cost actually changed.
+   */
+  onPlanChanged(token) {
+    if ((this.#dragged !== token) || !setting(SETTINGS.rangeOverlay)) return;
+    const live = readLivePlan(token);
+    if (live === undefined) return; // still searching: keep what is showing
+    const signature = live?.signature ?? 'start';
+    if (signature === this.#signature) return;
+    this.#signature = signature;
+    this.#show(token, live);
   }
 
   /** Pin the range of `token`, or unpin if it is already pinned (or null). */
@@ -265,8 +322,16 @@ class RangeOverlay {
   /** Redraw for whatever should currently be showing, or clear. */
   refresh() {
     const token = this.#dragged ?? this.#pinned;
-    if (token && !token.destroyed && setting(SETTINGS.rangeOverlay)) this.#show(token);
-    else this.clear();
+    if (!token || token.destroyed || !setting(SETTINGS.rangeOverlay)) {
+      this.clear();
+      return;
+    }
+    // Something the range depends on changed (a wall, a setting, the HUD's
+    // colours), so what was reachable at the start of a drag is stale too.
+    if (token === this.#dragged) {
+      this.#baseline = null;
+      this.#show(token, readLivePlan(token) ?? null);
+    } else this.#show(token);
   }
 
   clear() {
@@ -279,44 +344,79 @@ class RangeOverlay {
     this.#generation++;
     this.#dragged = null;
     this.#pinned = null;
+    this.#baseline = null;
+    this.#signature = null;
   }
 
-  async #show(token) {
+  /**
+   * Run a search across as many frames as it needs.
+   * @returns {Promise<Map|null>} The result, or null if it was superseded.
+   */
+  async #search(plan, generation, onPartial = null) {
+    const search = explore(plan.search);
+    let lastDraw = performance.now();
+    for (;;) {
+      const sliceStart = performance.now();
+      let result;
+      do result = search.next();
+      while (!result.done && (performance.now() - sliceStart < FRAME_BUDGET_MS));
+      if (result.done) return result.value;
+      if (onPartial && (performance.now() - lastDraw > PARTIAL_DRAW_MS)) {
+        onPartial(result.value);
+        lastDraw = performance.now();
+      }
+      await nextFrame();
+      if ((generation !== this.#generation) || !canvas.ready) return null;
+    }
+  }
+
+  /**
+   * @param {Token} token
+   * @param {LivePlan|null} [live]  The drag's planned route, if it has one
+   */
+  async #show(token, live = null) {
     const generation = ++this.#generation;
     try {
       const started = performance.now();
-      const plan = buildPlan(token);
+      const dragging = this.#dragged === token;
+      let before = dragging ? this.#baseline : null;
+
+      // The range from where the token stands. Always what a pinned range
+      // shows; during a drag it is also what the route is compared against.
+      if (!live || (dragging && !before)) {
+        const plan = buildPlan(token);
+        if (!plan) {
+          canvas.interface.grid.clearHighlightLayer(LAYER);
+          return;
+        }
+        // Usually done well inside one frame. A very fast token on a busy map
+        // is spread across several instead of freezing the drag, and the
+        // nearer bands are painted as soon as they are known.
+        const reached = await this.#search(plan, generation,
+          live ? null : (partial) => paint(plan, collectCells(plan, partial)));
+        if (!reached || !canvas.ready) return;
+        const cells = collectCells(plan, reached);
+        if (dragging) this.#baseline = before = cells;
+        if (!live) {
+          paint(plan, cells);
+          log.debug(`range: ${reached.size} spaces in ${(performance.now() - started).toFixed(1)} ms`);
+          return;
+        }
+      }
+
+      // The range from the end of the planned route, with what the route
+      // leaves. No partial painting here: a half-finished search would show
+      // spaces as lost that are merely not reached yet.
+      const plan = buildPlan(token, live);
       if (!plan) {
         canvas.interface.grid.clearHighlightLayer(LAYER);
         return;
       }
-
-      // Usually done well inside one frame. A very fast token on a busy map
-      // is spread across several instead of freezing the drag, and the nearer
-      // bands are painted as soon as they are known rather than all at the end.
-      const search = explore(plan.search);
-      let reached;
-      let lastDraw = performance.now();
-      for (;;) {
-        const sliceStart = performance.now();
-        let result;
-        do result = search.next();
-        while (!result.done && (performance.now() - sliceStart < FRAME_BUDGET_MS));
-        if (result.done) {
-          reached = result.value;
-          break;
-        }
-        if (performance.now() - lastDraw > PARTIAL_DRAW_MS) {
-          draw(plan, result.value);
-          lastDraw = performance.now();
-        }
-        await nextFrame();
-        if ((generation !== this.#generation) || !canvas.ready) return;
-      }
-
-      if (!canvas.ready) return;
-      draw(plan, reached);
-      log.debug(`range: ${reached.size} spaces in ${(performance.now() - started).toFixed(1)} ms`);
+      const reached = plan.search ? await this.#search(plan, generation) : new Map();
+      if (!reached || !canvas.ready) return;
+      paint(plan, collectCells(plan, reached), before);
+      log.debug(`range after route (${live.spent} used): ${reached.size} spaces in `
+        + `${(performance.now() - started).toFixed(1)} ms`);
     } catch (err) {
       log.error('range overlay failed', err);
       guarded('range overlay cleanup', () => canvas.interface.grid.clearHighlightLayer(LAYER));
