@@ -69,18 +69,28 @@ export function makeNavigator(token, { action, from = null, constrainOptions = n
     ...(constrainOptions ?? guarded('constrain options', () => token._getDragConstrainOptions(), {}) ?? {}),
     preview: true,
   };
+  // Where the token really is. Core can leave a token a pixel off the grid
+  // (see below), and which side of a wall that pixel is on decides everything.
+  const actual = { x: Math.round(source.x), y: Math.round(source.y) };
+  const startKey = `${start.i},${start.j}`;
+  const standingAt = (offset) => (`${offset.i},${offset.j}` === startKey ? actual : positionOf(offset));
+
   const blocked = (from_, to) => {
-    const origin = positionOf(from_);
+    const origin = standingAt(from_);
     const destination = positionOf(to);
     const [path] = token.constrainMovementPath([
-      { ...origin, action, snapped: true },
+      { ...origin, action, snapped: origin !== actual },
       { ...destination, action, snapped: true },
     ], constrain);
     const end = path.at(-1);
-    // "Constrained" alone is not "blocked": a token whose centre sits exactly
-    // on a wall line is nudged by a pixel and still arrives.
-    return !end || (path.length < 2)
-      || (Math.abs(end.x - destination.x) > 1) || (Math.abs(end.y - destination.y) > 1);
+    // Anything short of arriving exactly counts as blocked, including by a
+    // single pixel. That pixel is what core does when a token's centre would
+    // land on a wall: it stops it just short, on the side it came from. A
+    // token two spaces wide has its centre on the grid lines, which is where
+    // walls are usually drawn, so this is the normal case for Large creatures.
+    // Treating the near miss as "arrived" would let the next step leave from
+    // on top of the wall, and the token would walk straight through it.
+    return !end || (path.length < 2) || (end.x !== destination.x) || (end.y !== destination.y);
   };
 
   // Price of a step relative to open ground, straight from core's measurement.
