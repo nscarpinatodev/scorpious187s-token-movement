@@ -1,0 +1,112 @@
+/**
+ * Scorpious187's Token Movement — entry point.
+ * Foundry VTT v14.
+ */
+
+import { MODULE_ID, HOOKS, SETTINGS } from './constants.js';
+import { registerSettings, onRangeSettingChange } from './settings.js';
+import { installTokenMixin } from './token-mixin.js';
+import { rangeOverlay } from './overlay.js';
+import { getMovementRanges, getSpeed } from './speed.js';
+import { preloadStepSounds } from './sounds.js';
+import { SYSTEM_PRESETS } from './systems.js';
+import { registerFollow } from './follow.js';
+import { HUD_ATTRIBUTES } from './theme.js';
+import { guarded, log } from './logger.js';
+
+/** Token fields whose change moves or resizes a pinned range. */
+const RANGE_FIELDS = ['x', 'y', 'elevation', 'width', 'height', 'movementAction', '_movementHistory', 'level'];
+
+Hooks.once('init', () => {
+  registerSettings();
+
+  game.keybindings.register(MODULE_ID, 'toggleRange', {
+    name: 'S187MOVE.Keybindings.toggleRange.Name',
+    hint: 'S187MOVE.Keybindings.toggleRange.Hint',
+    editable: [{ key: 'KeyM' }],
+    onDown: () => {
+      if (!canvas.ready) return false;
+      const token = canvas.tokens.controlled[0] ?? null;
+      if (!token && !rangeOverlay.pinned) return false;
+      rangeOverlay.togglePin(token);
+      return true;
+    },
+  });
+
+  registerFollow();
+
+  game.modules.get(MODULE_ID).api = Object.freeze({
+    hooks: HOOKS,
+    presets: SYSTEM_PRESETS,
+    getSpeed,
+    getMovementRanges,
+    /** Redraw the range if one is showing, e.g. after changing an actor's speed. */
+    refreshRange: () => rangeOverlay.refresh(),
+    /** Pin (or with no argument, unpin) a token's range. */
+    pinRange: (token) => rangeOverlay.togglePin(token ?? null),
+  });
+
+  log.info('Initialized');
+});
+
+// `setup`, not `init`: systems and other modules install their Token class
+// during `init`, and ours has to wrap whichever one won.
+Hooks.once('setup', () => {
+  installTokenMixin();
+});
+
+Hooks.once('ready', () => {
+  preloadStepSounds();
+
+  if (game.user.isGM && !SYSTEM_PRESETS[game.system.id]
+    && !game.settings.get(MODULE_ID, SETTINGS.speedPath)
+    && !(game.settings.get(MODULE_ID, SETTINGS.defaultSpeed) > 0)) {
+    log.warn(`no speed preset for system "${game.system.id}": set a speed data path or fallback speed `
+      + 'in the module settings to see movement ranges');
+  }
+
+  log.info('Ready');
+});
+
+/* -------------------------------------------- */
+/*  Keeping a pinned range honest               */
+/* -------------------------------------------- */
+
+const refreshSoon = foundry.utils.debounce(() => guarded('range refresh', () => rangeOverlay.refresh()), 50);
+onRangeSettingChange(refreshSoon);
+
+Hooks.on('updateToken', (document, changed) => {
+  if (rangeOverlay.pinned?.document !== document) return;
+  if (RANGE_FIELDS.some((field) => field in changed)) refreshSoon();
+});
+
+Hooks.on('controlToken', (token, controlled) => {
+  if (!controlled && (rangeOverlay.pinned === token)) rangeOverlay.release(token);
+});
+
+Hooks.on('deleteToken', (document) => {
+  const pinned = rangeOverlay.pinned;
+  if (pinned?.document === document) rangeOverlay.release(pinned);
+});
+
+// Turn changes clear movement history, which is what "already used" reads.
+// Core clears it a moment *after* the combat update, from the GM's client and
+// without firing updateToken, so look again once that has had time to land.
+const combatChanged = () => {
+  refreshSoon();
+  setTimeout(refreshSoon, 750);
+};
+Hooks.on('updateCombat', combatChanged);
+Hooks.on('deleteCombat', combatChanged);
+
+// Walls opening or moving changes what is reachable.
+for (const hook of ['createWall', 'updateWall', 'deleteWall']) Hooks.on(hook, refreshSoon);
+
+Hooks.on('canvasTearDown', () => rangeOverlay.reset());
+
+// The Character HUD recolours the interface by changing attributes on <body>.
+// A range that is on screen at that moment should change with it.
+Hooks.once('ready', () => {
+  new MutationObserver(refreshSoon)
+    .observe(document.body, { attributes: true, attributeFilter: HUD_ATTRIBUTES });
+});

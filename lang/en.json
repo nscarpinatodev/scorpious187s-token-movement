@@ -1,0 +1,107 @@
+{
+  "S187MOVE": {
+    "Settings": {
+      "animationStyle": {
+        "Name": "Movement animation",
+        "Hint": "How tokens look while they move. Hop bounces from space to space like a playing piece; Glide lifts once, slides, and sets down at the end. Only changes what you see.",
+        "Hop": "Hop from space to space",
+        "Glide": "Lift, glide, set down",
+        "None": "Foundry default (no lift)"
+      },
+      "liftHeight": {
+        "Name": "Lift height",
+        "Hint": "How high a moving token rises, as a fraction of one grid space."
+      },
+      "liftScale": {
+        "Name": "Lift zoom",
+        "Hint": "How much a token grows at the top of its lift, which is what sells the sense of height. 0 disables it."
+      },
+      "stepSounds": {
+        "Name": "Step sounds",
+        "Hint": "Play a sound each time a moving token you can see lands on a space."
+      },
+      "stepVolume": {
+        "Name": "Step sound volume",
+        "Hint": "Scaled by Foundry's Interface volume."
+      },
+      "stepSound": {
+        "Name": "Custom step sound",
+        "Hint": "An audio file to play instead of the built-in step. Leave blank for the built-in sound."
+      },
+      "rangeOverlay": {
+        "Name": "Show reachable spaces",
+        "Hint": "While you drag a token, paint the spaces it can reach on the grid. Square and hex grids only."
+      },
+      "rangeColor": {
+        "Name": "Movement colour",
+        "Hint": "Colour of the spaces within the token's normal speed. Used with My own colours."
+      },
+      "dashColor": {
+        "Name": "Second band colour",
+        "Hint": "Colour of the next band out: a dash in D&D, a second Stride in Pathfinder."
+      },
+      "rangeOpacity": {
+        "Name": "Overlay opacity",
+        "Hint": "How strongly the reachable spaces are tinted."
+      },
+      "speedPath": {
+        "Name": "Speed data path",
+        "Hint": "Where on the actor a token's speed is stored, for example system.attributes.movement.{action}. {action} is replaced by the token's current movement action (walk, fly, swim…). Leave blank to use the built-in preset for this game system."
+      },
+      "speedUnit": {
+        "Name": "Speed is measured in",
+        "Hint": "Only applies to a custom speed data path. Choose Grid spaces for systems that store speed as a number of squares or hexes.",
+        "Distance": "Scene distance units (ft, m…)",
+        "Spaces": "Grid spaces"
+      },
+      "defaultSpeed": {
+        "Name": "Fallback speed",
+        "Hint": "Speed in scene distance units for tokens whose speed cannot be found, including tokens with no actor. 0 draws no range for them."
+      },
+      "subtractUsed": {
+        "Name": "Subtract movement already used",
+        "Hint": "In combat, shrink the range by what the token has already moved this turn, using Foundry's movement history."
+      },
+      "combatOnly": {
+        "Name": "Only show range in combat",
+        "Hint": "Hide the reachable spaces for tokens that are not in an active combat."
+      },
+      "maxSpaces": {
+        "Name": "Largest range to draw",
+        "Hint": "Cap, in grid spaces, on how far the range is searched. Very fast tokens are clipped to this so a drag never stalls."
+      },
+      "debug": {
+        "Name": "Debug logging",
+        "Hint": "Log speed lookups and range timings to the console."
+      },
+      "farColor": {
+        "Name": "Further band colour",
+        "Hint": "Colour of the third band and any beyond it."
+      },
+      "rangeBands": {
+        "Name": "Range bands",
+        "Hint": "Multiples of the token's speed to draw, separated by commas: \"1, 2\" is a move and a dash, \"1, 2, 3\" is three Strides, \"1\" is the move alone. Leave blank for this game system's default."
+      },
+      "colorScheme": {
+        "Name": "Colour scheme",
+        "Hint": "Match my Character HUD takes the band colours from the device you wear in Scorpious187's Sci-Fi Character HUD, and changes with it. If the HUD is not active, or you choose My own colours, the three colours below are used.",
+        "Hud": "Match my Character HUD",
+        "Custom": "My own colours"
+      }
+    },
+    "Keybindings": {
+      "toggleRange": {
+        "Name": "Show movement range",
+        "Hint": "Pin or unpin the reachable spaces for the selected token without dragging it."
+      },
+      "followMe": {
+        "Name": "Bring players' view along (hold)",
+        "Hint": "GM only. Hold while moving tokens and every player's view pans to follow that move. Players' own movement never moves anyone else's view."
+      }
+    },
+    "Notify": {
+      "NoSpeed": "Token Movement could not find a speed for this token, so no range is drawn. Set a speed data path or a fallback speed in the module settings.",
+      "Clipped": "This token's range is larger than the configured maximum and has been clipped."
+    }
+  }
+}

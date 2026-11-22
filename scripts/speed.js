@@ -1,0 +1,153 @@
+/**
+ * How far can this token go? Turns "a token and its movement action" into the
+ * bands the overlay draws, in scene distance units.
+ */
+
+import { HOOKS, SETTINGS } from './constants.js';
+import { setting } from './settings.js';
+import { log } from './logger.js';
+import { SYSTEM_PRESETS, DEFAULT_BANDS, parseBands, resolveSpeed } from './systems.js';
+import { hudBandColors } from './theme.js';
+
+/**
+ * @typedef {object} MovementRange
+ * @property {number} distance   Reach in scene distance units
+ * @property {number} color      0xRRGGBB
+ * @property {number} alpha      Fill opacity
+ */
+
+function colorNumber(value, fallback) {
+  try {
+    const color = foundry.utils.Color.from(value);
+    const number = Number(color);
+    return Number.isFinite(number) ? number : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** The preset in force: a custom data path if one is set, else the system's. */
+function activePreset() {
+  const system = SYSTEM_PRESETS[game.system.id];
+  const custom = (setting(SETTINGS.speedPath) ?? '').trim();
+  if (!custom) return system ?? null;
+  return {
+    paths: [custom],
+    // A custom path still benefits from the system's vocabulary, so
+    // `system.movement.speeds.{action}` works on pf2e without spelling "land".
+    aliases: system?.aliases,
+    unit: setting(SETTINGS.speedUnit) === 'spaces' ? 'spaces' : 'distance',
+  };
+}
+
+/** Is this token taking part in a combat that has begun? */
+export function inActiveCombat(token) {
+  const combat = token.combatant?.combat ?? null;
+  return !!combat?.started;
+}
+
+/**
+ * A token's speed for an action, in scene distance units, or 0 if unknown.
+ * @param {Token} token
+ * @param {string} action
+ * @returns {number}
+ */
+export function getSpeed(token, action) {
+  const found = resolveSpeed(token.document.actor, action, activePreset());
+  if (found) {
+    const speed = found.unit === 'spaces' ? found.value * canvas.grid.distance : found.value;
+    log.debug(`speed ${speed} for "${action}" from ${found.path}`);
+    return speed;
+  }
+  const fallback = Number(setting(SETTINGS.defaultSpeed)) || 0;
+  log.debug(`no speed found for "${action}"; fallback ${fallback}`);
+  return Math.max(fallback, 0);
+}
+
+/**
+ * How many diagonal steps the token has already taken this turn.
+ *
+ * Under the alternating rules (1/2/1 and 2/1/2) the price of the next diagonal
+ * depends on how many came before it, and core counts across the whole turn:
+ * its ruler measures the recorded history and the planned path as one. The
+ * range has to start from the same count or it is a space out.
+ * @param {Token} token
+ * @returns {number}
+ */
+export function diagonalsThisTurn(token) {
+  if (!inActiveCombat(token) || !setting(SETTINGS.subtractUsed)) return 0;
+  const grid = canvas.grid;
+  if (!grid.isSquare) return 0;
+  const document = token.document;
+  let count = 0;
+  let previous = null;
+  for (const waypoint of document.movementHistory ?? []) {
+    const center = document.getCenterPoint(waypoint);
+    const offset = grid.getOffset({ x: center.x, y: center.y });
+    const config = CONFIG.Token.movement.actions[waypoint.action];
+    const measured = !config?.teleport && (config?.measure !== false);
+    if (previous && measured) {
+      count += Math.min(Math.abs(offset.i - previous.i), Math.abs(offset.j - previous.j));
+    }
+    previous = offset;
+  }
+  return count;
+}
+
+/** Movement already spent this turn, from core's recorded movement history. */
+function spentThisTurn(token) {
+  let spent = 0;
+  for (const waypoint of token.document.movementHistory ?? []) {
+    if (Number.isFinite(waypoint.cost)) spent += waypoint.cost;
+  }
+  return spent;
+}
+
+/**
+ * The bands to draw for a token, nearest first. Empty means draw nothing.
+ * @param {Token} token
+ * @param {string} action   The movement action being planned
+ * @returns {MovementRange[]}
+ */
+export function getMovementRanges(token, action) {
+  const combat = inActiveCombat(token);
+  if (setting(SETTINGS.combatOnly) && !combat) return [];
+
+  const opacity = setting(SETTINGS.rangeOpacity) ?? 0.28;
+  // Nearest band first; the last colour repeats for any bands beyond it.
+  const colors = hudBandColors() ?? [
+    colorNumber(setting(SETTINGS.rangeColor), 0x3ddc84),
+    colorNumber(setting(SETTINGS.dashColor), 0xff9d2e),
+    colorNumber(setting(SETTINGS.farColor), 0xff5a5a),
+  ];
+  const colorOf = (index) => colors[Math.min(index, colors.length - 1)];
+
+  // Let a system module or a world script take over completely.
+  const custom = [];
+  Hooks.callAll(HOOKS.getMovementRanges, token.document, action, custom);
+  const supplied = custom
+    .filter((range) => Number.isFinite(range?.distance) && (range.distance > 0))
+    .map((range, index) => ({
+      distance: range.distance,
+      color: colorNumber(range.color, colorOf(index)),
+      alpha: Number.isFinite(range.alpha) ? range.alpha : opacity,
+    }))
+    .sort((a, b) => a.distance - b.distance);
+  if (supplied.length) return supplied;
+
+  const speed = getSpeed(token, action);
+  if (!(speed > 0)) return [];
+  const spent = (combat && setting(SETTINGS.subtractUsed)) ? spentThisTurn(token) : 0;
+  const bands = parseBands(setting(SETTINGS.rangeBands))
+    ?? SYSTEM_PRESETS[game.system.id]?.bands ?? DEFAULT_BANDS;
+
+  // Colour follows the band's place in the list, not its place among the
+  // survivors: once the first Stride is spent, what remains is still drawn in
+  // the second band's colour.
+  const ranges = bands.map((multiple, index) => ({
+    distance: (speed * multiple) - spent,
+    color: colorOf(index),
+    alpha: opacity,
+  }));
+  return ranges.filter((range) => range.distance > 0);
+}
