@@ -6,7 +6,9 @@
 import { MODULE_ID, HOOKS, SETTINGS } from './constants.js';
 import { registerSettings, onRangeSettingChange, applyWalkSpeed } from './settings.js';
 import { installTokenMixin } from './token-mixin.js';
+import { installRulerMixin } from './ruler-mixin.js';
 import { rangeOverlay } from './overlay.js';
+import { refreshTrails, forgetTrails, trailSnapshot } from './trail.js';
 import { getMovementRanges, getSpeed } from './speed.js';
 import { preloadStepSounds } from './sounds.js';
 import { SYSTEM_PRESETS } from './systems.js';
@@ -43,6 +45,10 @@ Hooks.once('init', () => {
     getMovementRanges,
     /** Redraw the range if one is showing, e.g. after changing an actor's speed. */
     refreshRange: () => rangeOverlay.refresh(),
+    /** What the range overlay is showing right now, as plain data; null if nothing. */
+    rangeSnapshot: () => rangeOverlay.snapshot(),
+    /** The trail drawn for a token, as plain data; null if none. */
+    trailSnapshot: (token) => trailSnapshot(token),
     /** Pin (or with no argument, unpin) a token's range. */
     pinRange: (token) => rangeOverlay.togglePin(token ?? null),
   });
@@ -54,6 +60,7 @@ Hooks.once('init', () => {
 // during `init`, and ours has to wrap whichever one won.
 Hooks.once('setup', () => {
   installTokenMixin();
+  installRulerMixin();
   applyWalkSpeed();
 });
 
@@ -74,7 +81,11 @@ Hooks.once('ready', () => {
 /*  Keeping a pinned range honest               */
 /* -------------------------------------------- */
 
-const refreshSoon = foundry.utils.debounce(() => guarded('range refresh', () => rangeOverlay.refresh()), 50);
+const refreshSoon = foundry.utils.debounce(() => {
+  guarded('range refresh', () => rangeOverlay.refresh());
+  // Trails take their look and colour from the same settings.
+  guarded('trail refresh', () => refreshTrails());
+}, 50);
 onRangeSettingChange(refreshSoon);
 
 Hooks.on('updateToken', (document, changed) => {
@@ -114,7 +125,10 @@ for (const hook of [
   'updateCombat', 'canvasReady', 'canvasTearDown',
 ]) Hooks.on(hook, forgetRoutes);
 
-Hooks.on('canvasTearDown', () => rangeOverlay.reset());
+Hooks.on('canvasTearDown', () => {
+  rangeOverlay.reset();
+  forgetTrails();
+});
 
 // The Character HUD recolours the interface by changing attributes on <body>.
 // A range that is on screen at that moment should change with it.

@@ -84,7 +84,8 @@
       },
       "colorScheme": {
         "Name": "Colour scheme",
-        "Hint": "Match my Character HUD takes the band colours from the device you wear in Scorpious187's Sci-Fi Character HUD, and changes with it. If the HUD is not active, or you choose My own colours, the three colours below are used.",
+        "Hint": "Suit the game system: Pathfinder and Starfinder 2e get green, yellow and red for the first, second and third Stride; every other system matches your Character HUD. Match my Character HUD takes the colour from the device you wear in Scorpious187's Sci-Fi Character HUD: in the Tiles style the whole range is that device's main colour, bold nearest the token, and darker and fainter with each band further out; in the Flat style the bands use the device's main, accent and warning colours. If the HUD is not active, or you choose My own colours, the three colours below are used as they are.",
+        "Auto": "Suit the game system",
         "Hud": "Match my Character HUD",
         "Custom": "My own colours"
       },
@@ -95,6 +96,20 @@
       "pathfinding": {
         "Name": "Find a way round",
         "Hint": "When the straight route to where you are dragging is blocked, plan the cheapest route round instead of stopping at the obstacle. Turn this off if another module does your pathfinding."
+      },
+      "overlayStyle": {
+        "Name": "Range style",
+        "Hint": "Tiles draws each reachable space as its own rounded tile, with a soft glowing edge round the whole area. Flat is a plain tint with a hard outline per band.",
+        "Tiles": "Tiles with a glowing edge",
+        "Flat": "Flat tint with outlines"
+      },
+      "overlayMotion": {
+        "Name": "Animate the range",
+        "Hint": "With the Tiles style, the edge of the range pulses gently and a slow shimmer crosses it. Untick for a still overlay."
+      },
+      "routeMarkers": {
+        "Name": "Light up the route",
+        "Hint": "With the Tiles style, routes are drawn as a lit strip with a ring on every step, in place of Foundry's line and squares: the route you are dragging, and the trail a token follows as it walks, which dims behind it. Each stretch is in the colour of the band it falls in, so you can see where the move ends and the dash begins. The distance label stays. Untick to keep Foundry's own ruler."
       }
     },
     "Keybindings": {

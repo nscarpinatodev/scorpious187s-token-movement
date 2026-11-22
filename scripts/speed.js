@@ -8,6 +8,13 @@ import { setting } from './settings.js';
 import { log } from './logger.js';
 import { SYSTEM_PRESETS, DEFAULT_BANDS, parseBands, resolveSpeed } from './systems.js';
 import { hudBandColors } from './theme.js';
+import { shadeOf, SHADE_COUNT } from './shapes.js';
+
+/** How a system's own band colours compare with the opacity setting, in the tiles look. */
+const SYSTEM_FADE = 1.2;
+
+/** No band is ever drawn more solid than this, whatever the settings multiply out to. */
+const MAX_ALPHA = 0.85;
 
 /**
  * @typedef {object} MovementRange
@@ -104,6 +111,106 @@ function spentThisTurn(token) {
 }
 
 /**
+ * How each band is coloured, nearest first.
+ *
+ *  - Left to suit the system, a system that has band colours of its own
+ *    uses them: green, yellow and red for the three Strides of Pathfinder
+ *    and Starfinder 2e.
+ *  - Otherwise the HUD decides. In the tiles look the whole range is one
+ *    colour, the device's main colour, each band further out a darker,
+ *    fainter shade of it. In the flat look the HUD's three colours are used as they are.
+ *  - With no HUD, or when the user has chosen their own, the three colour
+ *    settings are used as they are.
+ * @returns {{color: number, fade: number}[]} `fade` scales the band's opacity
+ */
+function bandLooks() {
+  const scheme = setting(SETTINGS.colorScheme);
+  const tiles = setting(SETTINGS.overlayStyle) !== 'flat';
+  if (scheme === 'auto') {
+    const own = SYSTEM_PRESETS[game.system.id]?.colors;
+    if (own?.length) return own.map((color) => ({ color, fade: tiles ? SYSTEM_FADE : 1 }));
+  }
+  const hud = hudBandColors();
+  if (hud && tiles) return Array.from({ length: SHADE_COUNT }, (_, index) => shadeOf(hud[0], index));
+  const colors = hud ?? [
+    colorNumber(setting(SETTINGS.rangeColor), 0x3ddc84),
+    colorNumber(setting(SETTINGS.dashColor), 0xff9d2e),
+    colorNumber(setting(SETTINGS.farColor), 0xff5a5a),
+  ];
+  return colors.map((color) => ({ color, fade: 1 }));
+}
+
+/** The colour of each band, nearest first. */
+export function bandColors() {
+  return bandLooks().map((look) => look.color);
+}
+
+/**
+ * A token's bands before anything is taken off for movement already used.
+ * @returns {{ranges: MovementRange[], custom: boolean}}
+ *   `custom` when a hook supplied them, in which case they are used as given.
+ */
+function baseBands(token, action) {
+  const opacity = setting(SETTINGS.rangeOpacity) ?? 0.28;
+  // Nearest band first; the last look repeats for any bands beyond it.
+  const looks = bandLooks();
+  const lookOf = (index) => looks[Math.min(index, looks.length - 1)];
+  const alphaOf = (index) => Math.min(opacity * lookOf(index).fade, MAX_ALPHA);
+
+  // Let a system module or a world script take over completely.
+  const custom = [];
+  Hooks.callAll(HOOKS.getMovementRanges, token.document, action, custom);
+  const supplied = custom
+    .filter((range) => Number.isFinite(range?.distance) && (range.distance > 0))
+    .map((range, index) => ({
+      distance: range.distance,
+      color: colorNumber(range.color, lookOf(index).color),
+      alpha: Number.isFinite(range.alpha) ? range.alpha : alphaOf(index),
+    }))
+    .sort((a, b) => a.distance - b.distance);
+  if (supplied.length) return { ranges: supplied, custom: true };
+
+  const speed = getSpeed(token, action);
+  if (!(speed > 0)) return { ranges: [], custom: false };
+  const bands = parseBands(setting(SETTINGS.rangeBands))
+    ?? SYSTEM_PRESETS[game.system.id]?.bands ?? DEFAULT_BANDS;
+  return {
+    ranges: bands.map((multiple, index) => ({
+      distance: speed * multiple,
+      color: lookOf(index).color,
+      alpha: alphaOf(index),
+    })),
+    custom: false,
+  };
+}
+
+/**
+ * What a route needs to colour each of its steps by how far along it is.
+ *
+ * A step is drawn in the colour of the band it falls in, so a route shows
+ * where the token's move ends and its dash begins. Both the route being
+ * dragged and the trail of a walking token ask here.
+ * @param {Token} token
+ * @param {string} action
+ * @returns {{ranges: MovementRange[], start: number}}
+ *   `ranges` are the token's whole bands, nothing taken off, and never empty:
+ *   a token with no known speed gets one band without end, in the first
+ *   band's colour. `start` is the movement already used this turn, which a
+ *   route planned from where the token stands has to count from.
+ */
+export function routeBands(token, action) {
+  const { ranges } = baseBands(token, action);
+  const counted = inActiveCombat(token) && !!setting(SETTINGS.subtractUsed);
+  if (ranges.length) return { ranges, start: counted ? spentThisTurn(token) : 0 };
+  const opacity = setting(SETTINGS.rangeOpacity) ?? 0.28;
+  const look = bandLooks()[0];
+  return {
+    ranges: [{ distance: Infinity, color: look.color, alpha: Math.min(opacity * look.fade, MAX_ALPHA) }],
+    start: 0,
+  };
+}
+
+/**
  * The bands to draw for a token, nearest first. Empty means draw nothing.
  * @param {Token} token
  * @param {string} action   The movement action being planned
@@ -113,41 +220,14 @@ export function getMovementRanges(token, action) {
   const combat = inActiveCombat(token);
   if (setting(SETTINGS.combatOnly) && !combat) return [];
 
-  const opacity = setting(SETTINGS.rangeOpacity) ?? 0.28;
-  // Nearest band first; the last colour repeats for any bands beyond it.
-  const colors = hudBandColors() ?? [
-    colorNumber(setting(SETTINGS.rangeColor), 0x3ddc84),
-    colorNumber(setting(SETTINGS.dashColor), 0xff9d2e),
-    colorNumber(setting(SETTINGS.farColor), 0xff5a5a),
-  ];
-  const colorOf = (index) => colors[Math.min(index, colors.length - 1)];
-
-  // Let a system module or a world script take over completely.
-  const custom = [];
-  Hooks.callAll(HOOKS.getMovementRanges, token.document, action, custom);
-  const supplied = custom
-    .filter((range) => Number.isFinite(range?.distance) && (range.distance > 0))
-    .map((range, index) => ({
-      distance: range.distance,
-      color: colorNumber(range.color, colorOf(index)),
-      alpha: Number.isFinite(range.alpha) ? range.alpha : opacity,
-    }))
-    .sort((a, b) => a.distance - b.distance);
-  if (supplied.length) return supplied;
-
-  const speed = getSpeed(token, action);
-  if (!(speed > 0)) return [];
+  const { ranges, custom } = baseBands(token, action);
+  if (custom) return ranges;
   const spent = (combat && setting(SETTINGS.subtractUsed)) ? spentThisTurn(token) : 0;
-  const bands = parseBands(setting(SETTINGS.rangeBands))
-    ?? SYSTEM_PRESETS[game.system.id]?.bands ?? DEFAULT_BANDS;
 
   // Colour follows the band's place in the list, not its place among the
   // survivors: once the first Stride is spent, what remains is still drawn in
   // the second band's colour.
-  const ranges = bands.map((multiple, index) => ({
-    distance: (speed * multiple) - spent,
-    color: colorOf(index),
-    alpha: opacity,
-  }));
-  return ranges.filter((range) => range.distance > 0);
+  return ranges
+    .map((range) => ({ ...range, distance: range.distance - spent }))
+    .filter((range) => range.distance > 0);
 }

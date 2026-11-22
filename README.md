@@ -4,13 +4,17 @@ Makes moving a token feel like moving a miniature, on any game system, for Found
 
 - **Lift and hop.** A moving token rises off the map, hops from space to space and lands. Or pick the glide: lift once, slide, set down.
 - **Step sounds.** A soft footfall each time a token you can see lands on a space. Built-in sound, or your own file.
-- **Reachable spaces.** While you drag a token, the spaces it can get to are painted on the grid in bands: its move, then a dash (or a second and third Stride in Pathfinder and Starfinder 2e).
+- **Reachable spaces.** While you drag a token, the spaces it can get to light up as tiles with a soft glowing edge, in bands: its move, then a dash (or a second and third Stride in Pathfinder and Starfinder 2e). The route you are dragging is a lit strip with a ring on every step, and it stays under the token as it walks, dimming behind it.
 - **A way round.** When the straight route is blocked, the cheapest route round is planned for you.
 - **System-agnostic.** Speeds are read from a data path on the actor. Presets cover common systems; one setting covers the rest.
 - **Your camera stays yours.** Nobody's movement moves anybody else's view. The one exception is a GM-only key the GM holds on purpose.
-- **Matches your HUD.** With [Scorpious187's HUD UI](https://github.com/nscarpinatodev/scorpious187s-scifi-character-hud) active, the range takes its colours from the device you wear.
+- **Colours that suit the game.** With [Scorpious187's HUD UI](https://github.com/nscarpinatodev/scorpious187s-scifi-character-hud) active, the range takes its colour from the device you wear: one colour, bold nearest the token and darker and fainter with each band further out. Pathfinder and Starfinder 2e get green, yellow and red for the first, second and third Stride.
 
-![Dragging a token: the reachable spaces in the HUD's colours, with core's ruler on top](docs/screenshots/01-drag-range-hud-colours.jpg)
+![Dragging a token round an enemy: reachable spaces as tiles, the route as a lit strip with a ring on each step](docs/screenshots/10-tiles-style.jpg)
+
+On video: [the range, the route and the walk in the Tiles style](docs/media/tiles-style.mp4), and [the walk on its own at quarter speed](docs/media/tiles-trail-slow.mp4).
+
+![The Flat style: the reachable spaces in the HUD's colours, with core's ruler on top](docs/screenshots/01-drag-range-hud-colours.jpg)
 
 ![A token walking three spaces and back: one hop per space](docs/media/walk-hop.gif)
 
@@ -26,7 +30,8 @@ Foundry v13 and v14 gained real token movement: waypoints, a ruler that shows th
 
 | You see | Who does it |
 | --- | --- |
-| The route line and distance labels while dragging | Core's token ruler (or your system's) |
+| The distance labels, and the routes other players are planning | Core's token ruler (or your system's) |
+| The lit route under your own drag, and the trail a token walks | This module, in the Tiles style. In the Flat style both are core's line and squares |
 | A route around a wall | This module. Core on its own draws a straight route and stops it at the wall |
 | Other players seeing your planned move | Core |
 | Whether a step is blocked, and what it costs | Core and your system, asked one step at a time |
@@ -52,6 +57,32 @@ The route's cost is core's own figure, the same one on the ruler label, so the t
 ![A 20 ft route under Alternating 1/2/1: the bright area is what the remaining movement reaches from the route's end, the dark area is what the route has put out of reach](docs/screenshots/08-live-route.jpg)
 
 On video: [the range following a drag](docs/media/live-drag.mp4).
+
+## The look
+
+There are two styles, chosen per user with **Range style**.
+
+**Tiles** (the default) follows the look of Aeris Tokens:
+
+- Every reachable space is its own tile, a little smaller than the space and with rounded corners, so the map's grid shows between them.
+- Following the HUD, the whole range is one colour. The nearest band is the device's main colour, drawn bolder than the opacity setting; each band beyond it is 20% darker than the one before and fainter. A fine line runs between the tiles where one band gives way to the next.
+- A soft glow runs round the outside of the whole area and pulses slowly. A faint shimmer drifts across the tiles. **Animate the range** turns both off for a still overlay.
+- The route you are dragging is a brighter strip of tiles with a ring on each step and a line joining them. A step the system will not allow is tinted red.
+- Spaces the route has put out of reach stay as dark tiles.
+- When you drop the token the route stays where it is, in the same colour, and is used up as the token walks: each step it reaches dims to a faint tile with a dot, and the rings ahead wait for it. Out of combat the trail goes when the walk ends.
+- In combat, where Foundry keeps this turn's movement, hovering a token or holding Alt shows its turn so far in the same faint tiles, and a new drag carries on from the end of them.
+
+![A token part-way along its route: faint tiles and dots behind it, lit tiles and rings ahead](docs/screenshots/11-walking-trail.jpg)
+
+![In combat: 20 ft already walked this turn, shown as faint tiles, and a new route being dragged from where it ended](docs/screenshots/12-trail-in-combat.jpg)
+
+Every step of a route is drawn in the colour of the band its distance falls in, so the route itself shows where the move ends and the dash begins: in D&D the first 30 ft of a speed-30 route are in the move colour and the rest in the dash shade; in Pathfinder the first Stride's worth is green, the second yellow and the third red. The route's tiles are a lighter, brighter version of those colours so they stand out of the range, and each step keeps its colour when the route becomes the trail.
+
+For these routes Foundry's own line, waypoint dots and highlighted squares are hidden, so nothing is drawn twice. Foundry still decides what is on a trail, when it is shown and who sees it, and its distance labels stay. Untick **Light up the route** to keep Foundry's ruler as it is and have tiles for the range alone.
+
+**Flat** is a plain tint with a hard outline round each band, under core's ruler. The screenshots further down this page that show a thick route line were taken in it.
+
+The tiles are drawn with this module's own geometry on square and hex grids; nothing is taken from Aeris Tokens but the idea.
 
 ## Finding a way round
 
@@ -118,15 +149,27 @@ In combat, the range shrinks by what the token has already moved this turn, usin
 
 ## Colours
 
-By default the range matches your Character HUD. The nearest band uses the device's main colour, the second its accent and the third its warning colour, and the range re-colours the moment you change device. The colours are read from the HUD at draw time, so new devices and looks need nothing from this module.
+**Colour scheme** has three choices, per user.
 
-If the HUD is not active, or you pick **My own colours**, the three colour pickers apply instead.
+**Suit the game system** (the default):
+
+- Pathfinder 2e and Starfinder 2e get green, yellow and red for the first, second and third Stride, in either style.
+- Every other system matches your Character HUD, as below.
+
+![Pathfinder 2e: a 70 ft route crossing the green, yellow and red Strides, each stretch of it in a lighter shade of its Stride's colour](docs/screenshots/13-pf2e-stride-colours.jpg)
+
+**Match my Character HUD** takes the colour from the device you wear and re-colours the moment you change device. The colours are read from the HUD at draw time, so new devices and looks need nothing from this module.
+
+- In the **Tiles** style everything is a shade of one colour, the one the HUD gives the first band (the device's main colour): the bands, the lit route, the trail, the glow, and a trace of it in the dark tiles a route has cost. The nearest band is bold and each one further out is 20% darker and fainter.
+- In the **Flat** style the nearest band uses the device's main colour, the second its accent and the third its warning colour.
+
+**My own colours** uses the three colour pickers, one per band, in either style. They are also what you get if the HUD is not active.
 
 ![The same range with My own colours](docs/screenshots/03-range-own-colours.jpg)
 
 ## Settings
 
-Per user: find a way round (pathfinding) on or off, animation style (hop, glide, or Foundry default), lift height and zoom, step sounds on or off and their volume (they play on Foundry's Interface audio channel), whether to show reachable spaces, colour scheme, band colours and opacity.
+Per user: find a way round (pathfinding) on or off, animation style (hop, glide, or Foundry default), lift height and zoom, step sounds on or off and their volume (they play on Foundry's Interface audio channel), whether to show reachable spaces, range style (tiles or flat), animate the range, light up the route, colour scheme, band colours and opacity.
 
 Per world: walk speed (how fast tokens travel, in spaces per second; Foundry's own is 6), custom step sound, speed data path and unit, fallback speed, range bands (for example `1, 2, 3`), subtract movement already used, only show in combat, and the largest range to draw.
 
@@ -152,6 +195,8 @@ api.getSpeed(token, 'walk');          // scene units, 0 if unknown
 api.getMovementRanges(token, 'walk'); // [{distance, color, alpha}]
 api.pinRange(token);                  // or api.pinRange() to unpin
 api.refreshRange();
+api.rangeSnapshot();                  // what the overlay shows now, as plain data; null if nothing
+api.trailSnapshot(token);             // the trail drawn for a token: steps, how many walked; null if none
 ```
 
 Flying, swimming, burrowing and driving glide rather than hop and make no footsteps. Teleports and unmeasured movement (a rider carried by [Token Mounting](https://github.com/nscarpinatodev/scorpious187s-token-mounting), a displacement) are left alone.
@@ -161,6 +206,7 @@ Flying, swimming, burrowing and driving glide rather than hop and make no footst
 - Gridless scenes get the animation but no range overlay.
 - Pathfinding is planned on the flat: a leg that changes elevation is left as core's straight line.
 - Other players do not see your overlay, only core's ruler.
+- A route another player is still planning is drawn by core's ruler in every style. Once their token walks, its trail is drawn here like any other.
 - No drop shadow under a lifted token.
 
 ## Development

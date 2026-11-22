@@ -128,7 +128,7 @@ check('unknown actor or preset resolves to null', () => {
 
 /* ---------------- 3. Reachability ---------------- */
 
-const { runToEnd, makeStepMetric, boundaryEdges, summarisePath, runRoute, turningPoints } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
+const { runToEnd, makeStepMetric, boundaryEdges, boundaryLoops, summarisePath, runRoute, turningPoints } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
 
 check('a planned route is summed from its waypoints', () => {
   const at = (i, j, cost) => ({ i, j, cost });
@@ -153,6 +153,122 @@ check('turning points are where a route changes direction', () => {
   assert(key(turningPoints([c(0, 0), c(0, 1), c(0, 2), c(1, 3), c(2, 4), c(2, 5)])) === '0,2 2,4', 'two turns');
   assert(key(turningPoints([c(0, 0), c(1, 1)])) === '', 'a single step has none');
   assert(key(turningPoints([c(0, 0)])) === '', 'nor does a single space');
+});
+
+const { roundedInsetPolygon, mixColor, cumulativeLengths, advanceAlong, shadeOf, SHADE_COUNT, bandAt } = await import(pathToFileURL(join(root, 'scripts/shapes.js')));
+
+check('the outline joins up into closed loops', () => {
+  const square = (x, y) => [{ x, y }, { x: x + 100, y }, { x: x + 100, y: y + 100 }, { x, y: y + 100 }];
+  const one = boundaryLoops([square(0, 0)]);
+  assert((one.length === 1) && (one[0].length === 8), 'one square is one loop of four points');
+  const block = boundaryLoops([square(0, 0), square(100, 0), square(0, 100), square(100, 100)]);
+  assert((block.length === 1) && (block[0].length === 16), 'a 2x2 block is one loop of eight points');
+  assert(boundaryLoops([square(0, 0), square(300, 0)]).length === 2, 'two separate squares are two loops');
+  const ring = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if ((i !== 1) || (j !== 1)) ring.push(square(i * 100, j * 100));
+  assert(boundaryLoops(ring).length === 2, 'a ring has an outside and an inside');
+  const points = boundaryLoops(ring).reduce((sum, loop) => sum + (loop.length / 2), 0);
+  assert(points === boundaryEdges(ring).length, 'every outline edge is used exactly once');
+});
+
+check('a tile is a space shrunk and rounded', () => {
+  const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+  const plain = roundedInsetPolygon(square, { inset: 5 });
+  assert(plain.join(',') === '5,5,95,5,95,95,5,95', `inset square: ${plain.join(',')}`);
+  const rounded = roundedInsetPolygon(square, { inset: 5, radius: 9, segments: 3 });
+  assert(rounded.length === 4 * 4 * 2, 'four corners of four points each');
+  for (let n = 0; n < rounded.length; n += 2) {
+    const x = rounded[n];
+    const y = rounded[n + 1];
+    assert((x >= 5 - 1e-9) && (x <= 95 + 1e-9) && (y >= 5 - 1e-9) && (y <= 95 + 1e-9), 'stays inside the gap');
+    const corner = [[5, 5], [95, 5], [95, 95], [5, 95]].some(([cx, cy]) => (Math.abs(x - cx) < 1e-6) && (Math.abs(y - cy) < 1e-6));
+    assert(!corner, 'no sharp corner survives');
+  }
+  // A hexagon across its flats: every side moves in by the same amount.
+  const hex = Array.from({ length: 6 }, (_, k) => ({ x: 100 * Math.cos((Math.PI / 3) * k), y: 100 * Math.sin((Math.PI / 3) * k) }));
+  const small = roundedInsetPolygon(hex, { inset: 10 });
+  const apothem = 100 * Math.cos(Math.PI / 6);
+  assert(close(Math.hypot(small[0], small[1]), 100 * ((apothem - 10) / apothem)), 'hexagon shrinks by its apothem');
+});
+
+check('colours blend channel by channel', () => {
+  assert(mixColor(0x000000, 0xffffff, 0.5) === 0x808080, 'halfway to white');
+  assert(mixColor(0x3ddc84, 0xffffff, 0) === 0x3ddc84, 'none');
+  assert(mixColor(0x3ddc84, 0xffffff, 1) === 0xffffff, 'all');
+  assert(mixColor(0xff0000, 0x0000ff, 0.25) === 0xbf0040, 'a quarter of the way from red to blue');
+});
+
+check('bands are shades of one colour', () => {
+  const base = 0x2f8fd0;
+  const channels = (color) => [(color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff];
+  assert(shadeOf(base, 0).color === base, 'the nearest band is the colour itself');
+  assert(shadeOf(base, 0).fade > 1, 'and bolder than the opacity setting on its own');
+  let previous = shadeOf(base, 0);
+  for (let index = 1; index < SHADE_COUNT; index++) {
+    const shade = shadeOf(base, index);
+    const [r, g, b] = channels(shade.color);
+    const [pr, pg, pb] = channels(previous.color);
+    assert((r < pr) && (g < pg) && (b < pb), `band ${index} is darker than the one before`);
+    assert(shade.fade < previous.fade, `band ${index} is fainter than the one before`);
+    // Darker, not a different colour: the order of the channels is unchanged.
+    assert((b >= g) && (g >= r), `band ${index} keeps its hue`);
+    previous = shade;
+  }
+  // The second band is 20% of the way to black.
+  assert(shadeOf(0xc86432, 1).color === 0xa05028, `20% darker: ${shadeOf(0xc86432, 1).color.toString(16)}`);
+  assert(shadeOf(base, SHADE_COUNT + 4).color === shadeOf(base, SHADE_COUNT - 1).color, 'bands beyond the last repeat it');
+});
+
+check('a step is in the band its distance falls in', () => {
+  const bands = [{ distance: 30, name: 'move' }, { distance: 60, name: 'dash' }];
+  assert(bandAt(bands, 0).name === 'move', 'where the token stands');
+  assert(bandAt(bands, 30).name === 'move', 'the last step of the move is still the move');
+  assert(bandAt(bands, 35).name === 'dash', 'one step further needs the dash');
+  assert(bandAt(bands, 60).name === 'dash', 'the last step of the dash');
+  assert(bandAt(bands, 75).name === 'dash', 'past every band is drawn as the last');
+  assert(bandAt([], 10) === null, 'no bands');
+  assert(bandAt([{ distance: Infinity, name: 'any' }], 1e9).name === 'any', 'a band without end');
+});
+
+check('three-action systems have their own band colours', () => {
+  for (const id of ['pf2e', 'sf2e']) {
+    const preset = SYSTEM_PRESETS[id];
+    assert(preset.colors?.length === preset.bands.length, `${id}: one colour per Stride`);
+    const [green, yellow, red] = preset.colors.map((color) => [(color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff]);
+    assert((green[1] > green[0]) && (green[1] > green[2]), `${id}: first Stride is green`);
+    assert((yellow[0] > 200) && (yellow[1] > 180) && (yellow[2] < 120), `${id}: second Stride is yellow`);
+    assert((red[0] > red[1] * 2) && (red[0] > red[2] * 2), `${id}: third Stride is red`);
+  }
+  assert(!SYSTEM_PRESETS.dnd5e.colors, 'D&D is left to the HUD');
+});
+
+check('a walking token is followed along its route', () => {
+  const P = (x, y) => ({ x, y });
+  // Along, then up: an L.
+  const bend = [P(0, 0), P(100, 0), P(200, 0), P(200, 100)];
+  const lengths = cumulativeLengths(bend);
+  assert(lengths.join(',') === '0,100,200,300', `lengths: ${lengths.join(',')}`);
+  assert(close(advanceAlong(bend, lengths, P(50, 0), 0, 35), 50), 'half way along the first step');
+  assert(close(advanceAlong(bend, lengths, P(200, 20), 190, 35), 220), 'round the corner');
+  assert(close(advanceAlong(bend, lengths, P(60, 0), 150, 35), 150), 'never goes backwards');
+  assert(close(advanceAlong(bend, lengths, P(200, 100), 0, 35), 300), 'a long frame still gets to the end');
+
+  // Out and straight back over the same spaces.
+  const back = [P(0, 0), P(100, 0), P(200, 0), P(100, 0), P(0, 0)];
+  const there = cumulativeLengths(back);
+  let far = 0;
+  const seen = [];
+  for (const x of [0, 40, 80, 120, 160, 200, 160, 120, 80, 40, 0]) {
+    far = advanceAlong(back, there, P(x, 0), far, 35);
+    seen.push(Math.round(far));
+  }
+  assert(seen.join(',') === '0,40,80,120,160,200,240,280,320,360,400', `out and back: ${seen.join(',')}`);
+
+  // A route that crosses itself: the second pass is not mistaken for the first.
+  const cross = [P(0, 0), P(200, 0), P(200, 200), P(100, 200), P(100, -100)];
+  const crossing = cumulativeLengths(cross);
+  assert(close(advanceAlong(cross, crossing, P(100, 0), 60, 35), 100), 'first time over the crossing');
+  assert(close(advanceAlong(cross, crossing, P(100, 0), 520, 35), 700), 'second time over the crossing');
 });
 
 check('boundaryEdges drops shared edges', () => {

@@ -104,11 +104,28 @@ export function registerSettings() {
   register(SETTINGS.rangeOverlay, {
     scope: 'client', type: Boolean, default: true, onChange: rangeChanged,
   });
+  register(SETTINGS.overlayStyle, {
+    scope: 'client',
+    type: String,
+    default: 'tiles',
+    choices: {
+      tiles: L('overlayStyle.Tiles'),
+      flat: L('overlayStyle.Flat'),
+    },
+    onChange: rangeChanged,
+  });
+  register(SETTINGS.overlayMotion, {
+    scope: 'client', type: Boolean, default: true, onChange: rangeChanged,
+  });
+  register(SETTINGS.routeMarkers, {
+    scope: 'client', type: Boolean, default: true, onChange: rangeChanged,
+  });
   register(SETTINGS.colorScheme, {
     scope: 'client',
     type: String,
-    default: 'hud',
+    default: 'auto',
     choices: {
+      auto: L('colorScheme.Auto'),
       hud: L('colorScheme.Hud'),
       custom: L('colorScheme.Custom'),
     },

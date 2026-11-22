@@ -6,7 +6,10 @@
  * applied (pf2e calls walking speed "land"). `unit` says whether the number
  * is in scene distance units or in grid spaces. `bands` are the multiples of
  * that speed worth drawing: a move and a dash by default, three Strides for
- * the three-action systems.
+ * the three-action systems. `colors` gives those bands colours of the
+ * system's own, used when the colour scheme is left to suit the system: in
+ * the three-action systems green, yellow and red for one, two and three
+ * actions' worth of movement.
  *
  * Values may be a number, a numeric string, or an object carrying the number
  * in `value` or `total` — see `readNumber`.
@@ -15,6 +18,7 @@
  * The rest are best-effort from each system's published data model; a path
  * that does not resolve simply falls through to the fallback speed.
  */
+
 export const SYSTEM_PRESETS = Object.freeze({
   dnd5e: {
     paths: [
@@ -31,6 +35,7 @@ export const SYSTEM_PRESETS = Object.freeze({
     aliases: { walk: 'land', crawl: 'land' },
     unit: 'distance',
     bands: [1, 2, 3],
+    colors: [0x4cd964, 0xffd23f, 0xff5a4f],
   },
   sf2e: {
     paths: [
@@ -40,6 +45,7 @@ export const SYSTEM_PRESETS = Object.freeze({
     aliases: { walk: 'land', crawl: 'land' },
     unit: 'distance',
     bands: [1, 2, 3],
+    colors: [0x4cd964, 0xffd23f, 0xff5a4f],
   },
   pf1: {
     paths: ['system.attributes.speed.{action}.total'],

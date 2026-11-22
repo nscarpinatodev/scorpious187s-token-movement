@@ -15,6 +15,7 @@ import {
 } from './animation.js';
 import { rangeOverlay } from './overlay.js';
 import { routeAround } from './pathfinding.js';
+import { advanceTrail } from './trail.js';
 
 const MIXED = Symbol.for(`${MODULE_ID}.mixed`);
 
@@ -41,6 +42,7 @@ export function installTokenMixin() {
     _refreshPosition() {
       super._refreshPosition();
       guarded('lift', () => applyLift(this));
+      guarded('trail progress', () => advanceTrail(this));
     }
 
     /** @override */

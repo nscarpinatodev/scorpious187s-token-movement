@@ -51,7 +51,7 @@ export function hudActive() {
  * @returns {number[]|null}
  */
 export function hudBandColors() {
-  if (setting(SETTINGS.colorScheme) !== 'hud') return null;
+  if (setting(SETTINGS.colorScheme) === 'custom') return null;
   if (!hudActive()) return null;
   const colors = HUD_VARIABLES.map(resolveColor);
   return colors.every((color) => color !== null) ? colors : null;

@@ -344,3 +344,49 @@ export function boundaryEdges(polygons) {
   for (const edge of seen.values()) if (edge) edges.push(edge);
   return edges;
 }
+
+/**
+ * The outline of a set of polygons that tile the plane, as closed loops.
+ *
+ * The same edges `boundaryEdges` finds, joined end to end. A loop can be
+ * stroked as one continuous line with proper joins, where separate edges
+ * would each end in a cap and overlap at every corner.
+ * @param {Iterable<{x: number, y: number}[]>} polygons
+ * @returns {number[][]} Each loop as flat [x0, y0, x1, y1, …]; closed by
+ *   joining the last point back to the first.
+ */
+export function boundaryLoops(polygons) {
+  const edges = boundaryEdges(polygons);
+  const key = (p) => `${Math.round(p.x)},${Math.round(p.y)}`;
+
+  // Which edges meet at each point, and by which end.
+  const meeting = new Map();
+  edges.forEach((edge, index) => {
+    edge.forEach((point, end) => {
+      const k = key(point);
+      if (!meeting.has(k)) meeting.set(k, []);
+      meeting.get(k).push({ index, end });
+    });
+  });
+
+  const used = new Array(edges.length).fill(false);
+  const loops = [];
+  for (let first = 0; first < edges.length; first++) {
+    if (used[first]) continue;
+    const loop = [];
+    let index = first;
+    let towards = 1; // travelling from the edge's first point to its second
+    for (;;) {
+      used[index] = true;
+      const from = edges[index][1 - towards];
+      const to = edges[index][towards];
+      loop.push(from.x, from.y);
+      const next = meeting.get(key(to)).find((candidate) => !used[candidate.index]);
+      if (!next) break;
+      index = next.index;
+      towards = 1 - next.end; // we arrive at one end and leave by the other
+    }
+    loops.push(loop);
+  }
+  return loops;
+}
