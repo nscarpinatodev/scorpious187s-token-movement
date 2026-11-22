@@ -62,13 +62,14 @@ Foundry has a hook for pathfinding but no pathfinder: left alone, a drag is a st
 - "In the way" means whatever your game system says blocks a step, so in D&D 5e the route goes round enemies as well as walls.
 - A player's route is only bent by walls they have seen, the same rule core applies to its own preview.
 - If there is no way round within reach, you get core's answer: the route stops at the obstacle.
+- The route is worked out on the spot, in about a millisecond once a drag is under way, so the route and the range keep up with the pointer as it crosses each space. Nothing waits on a search.
 - Waypoints you place yourself are kept; each leg between them is routed on its own.
 
 It can be switched off per user with **Find a way round**, which you will want if another module does your pathfinding. If such a module is already answering, this one stands aside.
 
 ![The route bending round the end of a wall, 55 ft in all](docs/screenshots/09-pathfinding.jpg)
 
-On video: [dragging behind a wall and walking the route](docs/media/pathfinding.mp4). The wall line is drawn onto the video; walls are not visible on the token layer in play.
+On video: [dragging behind a wall and walking the route](docs/media/pathfinding.mp4). And [a three-action move in Pathfinder 2e](docs/media/pf2e-three-actions.mp4): 90 ft, three Strides, round a wall. The wall line is drawn onto the video; walls are not visible on the token layer in play.
 
 ## Whose camera moves
 

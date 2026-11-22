@@ -50,14 +50,18 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 /**
  * Read the route core is planning for this user's drag of a token.
  * @param {Token} token
- * @returns {LivePlan|null|undefined}
- *   null when there is no route yet (still on the starting space), undefined
- *   while core is still searching for one.
+ * @returns {LivePlan|null}
+ *   null when there is no route yet (still on the starting space).
+ *
+ * While a pathfinder is still searching, core keeps the part of the route it
+ * is sure of — up to the last waypoint already reached, often just the start
+ * — and that is what is read here. So the overlay never stops: it shows the
+ * range from as far as the route is known, which at worst is the full range
+ * from the start, and moves on the moment the search reports back.
  */
 function readLivePlan(token) {
   const planned = token._plannedMovement?.[game.user.id];
   if (!planned) return null;
-  if (planned.searching) return undefined;
   const path = planned.foundPath ?? [];
   if (path.length < 2) return null;
 
@@ -299,7 +303,6 @@ class RangeOverlay {
   onPlanChanged(token) {
     if ((this.#dragged !== token) || !setting(SETTINGS.rangeOverlay)) return;
     const live = readLivePlan(token);
-    if (live === undefined) return; // still searching: keep what is showing
     const signature = live?.signature ?? 'start';
     if (signature === this.#signature) return;
     this.#signature = signature;
@@ -330,7 +333,7 @@ class RangeOverlay {
     // colours), so what was reachable at the start of a drag is stale too.
     if (token === this.#dragged) {
       this.#baseline = null;
-      this.#show(token, readLivePlan(token) ?? null);
+      this.#show(token, readLivePlan(token));
     } else this.#show(token);
   }
 

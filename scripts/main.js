@@ -11,6 +11,7 @@ import { getMovementRanges, getSpeed } from './speed.js';
 import { preloadStepSounds } from './sounds.js';
 import { SYSTEM_PRESETS } from './systems.js';
 import { registerFollow } from './follow.js';
+import { forgetRoutes } from './pathfinding.js';
 import { HUD_ATTRIBUTES } from './theme.js';
 import { guarded, log } from './logger.js';
 
@@ -102,6 +103,16 @@ Hooks.on('deleteCombat', combatChanged);
 
 // Walls opening or moving changes what is reachable.
 for (const hook of ['createWall', 'updateWall', 'deleteWall']) Hooks.on(hook, refreshSoon);
+
+// Pathfinding keeps what it has worked out for the length of a drag. Anything
+// that can change where a token may step throws that away: walls, other
+// tokens (which block in some systems), regions, and a change of scene.
+for (const hook of [
+  'createWall', 'updateWall', 'deleteWall',
+  'createToken', 'updateToken', 'deleteToken',
+  'createRegion', 'updateRegion', 'deleteRegion',
+  'updateCombat', 'canvasReady', 'canvasTearDown',
+]) Hooks.on(hook, forgetRoutes);
 
 Hooks.on('canvasTearDown', () => rangeOverlay.reset());
 

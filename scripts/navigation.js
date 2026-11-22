@@ -107,6 +107,8 @@ export function makeNavigator(token, { action, from = null, constrainOptions = n
     return measured.cost / measured.distance;
   };
 
+  const answers = new Map();
+
   const bounds = canvas.dimensions.rect;
   const neighbors = (offset) => grid.getAdjacentOffsets(offset).filter((next) => {
     const delta = deltaOf(next);
@@ -126,7 +128,19 @@ export function makeNavigator(token, { action, from = null, constrainOptions = n
     // The scene's grid carries the world's "Square Grid Diagonals" setting, so
     // the rule in force is whatever the GM has chosen there.
     step: makeStepMetric(grid, CONST.GRID_DIAGONALS),
-    /** 1 on open ground, more on difficult terrain, Infinity if not allowed. */
-    edge: (from_, to) => (blocked(from_, to) ? Infinity : factor(from_, to)),
+    /**
+     * 1 on open ground, more on difficult terrain, Infinity if not allowed.
+     * Remembered, because a navigator that is kept for the length of a drag is
+     * asked about the same pairs of spaces over and over.
+     */
+    edge: (from_, to) => {
+      const key = `${from_.i},${from_.j}>${to.i},${to.j}`;
+      let answer = answers.get(key);
+      if (answer === undefined) {
+        answer = blocked(from_, to) ? Infinity : factor(from_, to);
+        answers.set(key, answer);
+      }
+      return answer;
+    },
   };
 }
