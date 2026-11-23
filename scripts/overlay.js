@@ -25,6 +25,7 @@ import { explore, summarisePath } from './reachability.js';
 import { bandAt } from './shapes.js';
 import { makeNavigator } from './navigation.js';
 import { paintRange, clearRange, forgetRange, overlayStyle, routesStyled } from './overlay-render.js';
+import { moverOf } from './mounts.js';
 
 /** Longest the search may hold a single frame, in ms. */
 const FRAME_BUDGET_MS = 9;
@@ -317,6 +318,9 @@ class RangeOverlay {
 
   onDragStart(token) {
     if (!setting(SETTINGS.rangeOverlay)) return;
+    // A passenger's drag goes nowhere, so it is left to core's ruler: no
+    // range, and no lit route promising a move that will not happen.
+    if (!moverOf(token)) return;
     this.#dragged = token;
     this.#baseline = null;
     this.#footprint = null;

@@ -379,6 +379,66 @@ check('a walking token is followed along its route', () => {
   assert(close(advanceAlong(cross, crossing, P(100, 0), 520, 35), 700), 'second time over the crossing');
 });
 
+const { drawnPoints } = await import(pathToFileURL(join(root, 'scripts/shapes.js')));
+check('a leg that is not shown is left out of a trail', () => {
+  const kept = (hidden) => drawnPoints(hidden).map(({ index, broken }) => `${index}${broken ? '!' : ''}`).join(' ');
+  assert(kept([false, false, false]) === '0! 1 2', `all shown: ${kept([false, false, false])}`);
+  assert(kept([true, true, true]) === '', 'carried all the way: nothing to draw');
+  // Walked two legs, carried two, walked one more.
+  assert(kept([false, false, false, true, true, false]) === '0! 1 2 4! 5', `a ride in the middle: ${kept([false, false, false, true, true, false])}`);
+  // Carried first, then walked: the walk starts where the ride ended.
+  assert(kept([true, true, false, false]) === '1! 2 3', `a ride first: ${kept([true, true, false, false])}`);
+  assert(kept([false]) === '', 'one point is not a route');
+});
+
+const { moverOf, carrierOf, ridersOf } = await import(pathToFileURL(join(root, 'scripts/mounts.js')));
+check('a rider who steers spends the mount, and a passenger nothing', () => {
+  const saved = globalThis.game;
+  const MOUNTING = 'scorpious187s-token-mounting';
+  // A token on the canvas, and what it rides: [mount, seat].
+  const make = (name) => { const token = { name, document: { name } }; token.document.object = token; return token; };
+  const dragon = make('dragon'); const knight = make('knight'); const squire = make('squire');
+  const page = make('page'); const walker = make('walker');
+  const rides = new Map([[knight.document, [dragon.document, 0]], [squire.document, [dragon.document, 1]], [page.document, [knight.document, 0]]]);
+  const api = {
+    pilotSeat: 0,
+    getMount: (document) => rides.get(document)?.[0] ?? null,
+    isPilot: (document) => rides.get(document)?.[1] === 0,
+    allRiders: (document) => [...rides].filter(([, [mount]]) => mount === document).map(([rider]) => rider),
+  };
+  const withModule = (module) => { globalThis.game = { modules: { get: (id) => (id === MOUNTING ? module : undefined) } }; };
+  try {
+    withModule({ active: true, api });
+    assert(moverOf(walker) === walker, 'on foot: itself');
+    assert(moverOf(dragon) === dragon, 'a mount: itself');
+    assert(moverOf(knight) === dragon, 'first seat: the mount');
+    assert(moverOf(squire) === null, 'second seat: a passenger');
+    assert(moverOf(page) === dragon, 'steering a rider who steers: all the way down');
+    assert(carrierOf(squire) === dragon && carrierOf(dragon) === null, 'who carries whom');
+    assert(ridersOf(dragon).length === 2 && ridersOf(walker).length === 0, 'who is carried');
+
+    // An older Token Mounting says which seat only on the rider's flag.
+    const { isPilot, ...older } = api;
+    knight.document.getFlag = () => ({ seat: 0 }); squire.document.getFlag = () => ({ seat: 1 });
+    withModule({ active: true, api: older });
+    assert(moverOf(knight) === dragon && moverOf(squire) === null, 'read from the flag');
+
+    // A mount that is not on the canvas cannot be asked anything.
+    dragon.document.object = null;
+    assert(moverOf(knight) === knight, 'mount not drawn: itself');
+    dragon.document.object = dragon;
+
+    withModule({ active: false, api });
+    assert(moverOf(squire) === squire && carrierOf(knight) === null, 'module off');
+    withModule(undefined);
+    assert(moverOf(squire) === squire && ridersOf(dragon).length === 0, 'module absent');
+    globalThis.game = undefined;
+    assert(moverOf(knight) === knight, 'before the game exists');
+  } finally {
+    globalThis.game = saved;
+  }
+});
+
 check('boundaryEdges drops shared edges', () => {
   const square = (x, y) => [{ x, y }, { x: x + 100, y }, { x: x + 100, y: y + 100 }, { x, y: y + 100 }];
   assert(boundaryEdges([square(0, 0)]).length === 4, 'one square has four edges');

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (unreleased)
+
+Works with Scorpious187's Token Mounting.
+
+- A rider who steers a mount is shown the mount's range: its speed and what it has left this turn. Before, the range was the rider's own, though it is the mount that moves and pays.
+- A passenger is shown no range and no lit route, since they cannot move until they dismount.
+- Riders rise and fall with their mount. Before, the mount hopped underneath riders who slid along flat.
+- A token carried by its mount no longer gets a trail for the ride. Any movement action marked as not visualized is now left out of trails, as core's ruler leaves it out.
+
 ## 0.1.0
 
 First version.

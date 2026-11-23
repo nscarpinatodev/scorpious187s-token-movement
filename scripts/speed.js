@@ -9,6 +9,7 @@ import { log } from './logger.js';
 import { SYSTEM_PRESETS, DEFAULT_BANDS, parseBands, resolveSpeed } from './systems.js';
 import { hudBandColors } from './theme.js';
 import { shadeOf, SHADE_COUNT } from './shapes.js';
+import { moverOf } from './mounts.js';
 
 /** How a system's own band colours compare with the opacity setting, in the tiles look. */
 const SYSTEM_FADE = 1.2;
@@ -82,6 +83,8 @@ export function getSpeed(token, action) {
  * @returns {number}
  */
 export function diagonalsThisTurn(token) {
+  // A rider who steers spends the mount's movement, so the mount's count.
+  token = moverOf(token) ?? token;
   if (!inActiveCombat(token) || !setting(SETTINGS.subtractUsed)) return 0;
   const grid = canvas.grid;
   if (!grid.isSquare) return 0;
@@ -108,6 +111,25 @@ function spentThisTurn(token) {
     if (Number.isFinite(waypoint.cost)) spent += waypoint.cost;
   }
   return spent;
+}
+
+/**
+ * Whose movement a move of this token spends, and by which action.
+ *
+ * Nearly always the token itself. A rider who steers a mount spends the
+ * mount's movement instead: its speed, what it has used this turn, and its
+ * own movement action, since the rider's drag is turned into a move of the
+ * mount (see mounts.js).
+ * @param {Token} token
+ * @param {string} action   The action the token itself is planning
+ * @returns {{token: Token, action: string}|null} null for a passenger, who
+ *   cannot move on their own.
+ */
+function spender(token, action) {
+  const mover = moverOf(token);
+  if (!mover) return null;
+  if (mover === token) return { token, action };
+  return { token: mover, action: mover.document.movementAction ?? action };
 }
 
 /**
@@ -199,6 +221,7 @@ function baseBands(token, action) {
  *   route planned from where the token stands has to count from.
  */
 export function routeBands(token, action) {
+  ({ token, action } = spender(token, action) ?? { token, action });
   const { ranges } = baseBands(token, action);
   const counted = inActiveCombat(token) && !!setting(SETTINGS.subtractUsed);
   if (ranges.length) return { ranges, start: counted ? spentThisTurn(token) : 0 };
@@ -217,6 +240,10 @@ export function routeBands(token, action) {
  * @returns {MovementRange[]}
  */
 export function getMovementRanges(token, action) {
+  // A passenger goes nowhere until they dismount: nothing to draw.
+  const spends = spender(token, action);
+  if (!spends) return [];
+  ({ token, action } = spends);
   const combat = inActiveCombat(token);
   if (setting(SETTINGS.combatOnly) && !combat) return [];
 

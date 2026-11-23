@@ -115,6 +115,16 @@ The GM has one tool: hold **G** while moving tokens and every player's view pans
 - Hidden tokens are never followed, so the GM can hold the key through a mixed move without revealing anything.
 - The GM's own view is not moved.
 
+## With Token Mounting
+
+[Scorpious187's Token Mounting](https://github.com/nscarpinatodev/scorpious187s-token-mounting) puts tokens on other tokens. When it is active (0.5.1 or later for all of this):
+
+- **The rider who steers gets the mount's range.** Dragging the rider in the first seat moves the mount, so the range you see is the mount's: its speed, and what it has left this turn.
+- **A passenger gets no range.** They go nowhere until they dismount, so their drag is left to Foundry's own ruler.
+- **Riders rise and fall with the mount.** When the mount hops, whoever is on it goes up with it. Only the mount makes footsteps.
+- **Being carried leaves no trail.** A rider's trail shows only what it walked itself.
+- **A steered mount finds its own way.** Token Mounting asks the mount for its route to where the rider was dragged, so a mount two spaces wide gets a route that suits a mount two spaces wide. The route shown while you drag is still the rider's, so near a wall the mount's can differ from it and cost a little more.
+
 ## Requirements
 
 - Foundry VTT v14
@@ -223,13 +233,14 @@ api.rangeSnapshot();                  // what the overlay shows now, as plain da
 api.trailSnapshot(token);             // the trail drawn for a token: steps, how many walked; null if none
 ```
 
-Flying, swimming, burrowing and driving glide rather than hop and make no footsteps. Teleports and unmeasured movement (a rider carried by [Token Mounting](https://github.com/nscarpinatodev/scorpious187s-token-mounting), a displacement) are left alone.
+Flying, swimming, burrowing and driving glide rather than hop and make no footsteps. Teleports and unmeasured movement (a rider carried by its mount, a displacement) get no arc and no footsteps of their own, and a movement action marked as not visualized leaves no trail.
 
 ## Not yet
 
 - Gridless scenes get the animation but no range overlay.
 - Armor is read from the actor only in D&D 5e, Pathfinder 2e and Starfinder 2e. In other systems, and for creatures with no armor item, a token is unarmored until you set its step sound in Token Configuration.
 - Pathfinding is planned on the flat: a leg that changes elevation is left as core's straight line.
+- With Token Mounting, the route and cost shown while a rider steers are worked out for the rider's own space. The mount then takes its own route to the same place.
 - Other players do not see your overlay, only core's ruler.
 - A route another player is still planning is drawn by core's ruler in every style. Once their token walks, its trail is drawn here like any other.
 - No drop shadow under a lifted token.

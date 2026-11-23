@@ -20,7 +20,7 @@ import { guarded } from './logger.js';
 import { routesStyled } from './overlay-render.js';
 import { routeBands, inActiveCombat } from './speed.js';
 import { litColor, litAlpha, walkedAlpha, fillStrip, drawSteps } from './route-draw.js';
-import { cumulativeLengths, advanceAlong, bandAt } from './shapes.js';
+import { cumulativeLengths, advanceAlong, bandAt, drawnPoints } from './shapes.js';
 
 /** A step counts as walked once the token is within this much of it, in spaces. */
 const ARRIVED = 0.3;
@@ -99,7 +99,38 @@ export function updateTrail(token, rulerData, visible) {
 
   const grid = canvas.grid;
   const document = token.document;
-  const steps = [...passedWaypoints, ...pendingWaypoints].map((waypoint) => {
+  const waypoints = [...passedWaypoints, ...pendingWaypoints];
+
+  // While the token is still walking, the last part of what it has "passed"
+  // is the move it is in the middle of: the document is already at the end,
+  // the token on screen is not.
+  const movement = document.movement;
+  const animating = token.animationContexts.has(token.movementAnimationName);
+  const everyPassed = passedWaypoints.length;
+  const everyLive = (animating && movement?.showRuler)
+    ? Math.min(movement.passed?.waypoints?.length ?? 0, everyPassed) : 0;
+
+  // Which band each waypoint falls in. In combat the bands count the whole
+  // turn, which is what the trail holds; otherwise just the move under way.
+  const { ranges } = routeBands(token, document.movementAction);
+  const wholeTurn = inActiveCombat(token) && !!setting(SETTINGS.subtractUsed);
+  let used = 0;
+  const bands = waypoints.map((waypoint, n) => {
+    if ((wholeTurn || (n >= everyPassed - everyLive)) && Number.isFinite(waypoint.cost)) used += waypoint.cost;
+    return bandAt(ranges, used);
+  });
+
+  // A leg travelled by an action that is not to be shown is left out, as
+  // core's ruler leaves it out: a rider is not trailed by where its mount
+  // carried it, nor a token by where it was shoved.
+  const actions = CONFIG.Token.movement.actions;
+  const drawn = drawnPoints(waypoints.map((waypoint) => actions[waypoint.action]?.visualize === false));
+  if (drawn.length < 2) {
+    dropTrail(token);
+    return;
+  }
+  const steps = drawn.map(({ index, broken }) => {
+    const waypoint = waypoints[index];
     const center = document.getCenterPoint(waypoint);
     let offsets = guarded('trail footprint', () => document.getOccupiedGridSpaceOffsets(waypoint), null);
     if (!offsets?.length) offsets = [grid.getOffset({ x: center.x, y: center.y })];
@@ -107,20 +138,14 @@ export function updateTrail(token, rulerData, visible) {
       x: center.x,
       y: center.y,
       offsets,
-      jump: !!CONFIG.Token.movement.actions[waypoint.action]?.teleport,
-      cost: Number.isFinite(waypoint.cost) ? waypoint.cost : 0,
+      jump: broken || !!actions[waypoint.action]?.teleport,
+      band: bands[index],
     };
   });
-  const passed = passedWaypoints.length;
+  const passed = drawn.filter(({ index }) => index < everyPassed).length;
+  const firstLive = drawn.filter(({ index }) => index < everyPassed - everyLive).length;
+  const live = passed - firstLive;
   const lengths = cumulativeLengths(steps);
-
-  // While the token is still walking, the last part of what it has "passed"
-  // is the move it is in the middle of: the document is already at the end,
-  // the token on screen is not.
-  const movement = document.movement;
-  const animating = token.animationContexts.has(token.movementAnimationName);
-  const live = (animating && movement?.showRuler) ? Math.min(movement.passed?.waypoints?.length ?? 0, passed) : 0;
-  const firstLive = passed - live;
 
   let trail = trails.get(token);
   if (!trail || trail.graphics.destroyed) {
@@ -139,16 +164,6 @@ export function updateTrail(token, rulerData, visible) {
     trail.progress = Math.min(Math.max(trail.progress, 0), end);
     trail.progress = advanceAlong(steps, lengths, token.center, trail.progress, ON_ROUTE * grid.size);
   }
-
-  // Which band each step falls in. In combat the bands count the whole turn,
-  // which is what the trail holds; otherwise just the move under way.
-  const { ranges } = routeBands(token, document.movementAction);
-  const wholeTurn = inActiveCombat(token) && !!setting(SETTINGS.subtractUsed);
-  let used = 0;
-  steps.forEach((step, n) => {
-    if (wholeTurn || (n >= firstLive)) used += step.cost;
-    step.band = bandAt(ranges, used);
-  });
 
   Object.assign(trail, {
     steps,

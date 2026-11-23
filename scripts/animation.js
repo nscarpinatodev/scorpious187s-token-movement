@@ -11,12 +11,17 @@
  * Only the mesh is offset. The document, the token's hit area, vision, light
  * and region tests all stay on the true path, so nothing about where the token
  * *is* changes; only how it is drawn.
+ *
+ * A token riding another (see mounts.js) is drawn on top of it and carried
+ * along without an arc of its own, so it takes its mount's lift: when the
+ * horse hops, the rider goes up with the saddle.
  */
 
 import { ANIMATION_STYLES, HOOKS, SETTINGS } from './constants.js';
 import { setting } from './settings.js';
 import { guarded } from './logger.js';
 import { playStep } from './sounds.js';
+import { carrierOf, ridersOf } from './mounts.js';
 
 /**
  * Movement actions with no footfalls. These use the glide even when the hop
@@ -94,7 +99,8 @@ export function decorate(token, to, options) {
   const stepping = !GLIDING_ACTIONS.has(action);
   const style = stepping ? setting(SETTINGS.animationStyle) : ANIMATION_STYLES.glide;
   const inner = options.ontick;
-  const link = { from: null, cells: 1, landed: 0, stepping };
+  // Whoever it is carrying is redrawn with it; looked up once for the link.
+  const link = { from: null, cells: 1, landed: 0, stepping, riders: ridersOf(token) };
   return {
     ...options,
     ontick: (elapsedMS, animation, data) => {
@@ -145,6 +151,7 @@ function tick(token, to, link, style, animation) {
   // Instant moves (animation disabled, or a zero-length link) have no arc.
   if (!(duration > 0)) {
     state.lift = 0;
+    redraw(link.riders);
     return;
   }
 
@@ -184,6 +191,28 @@ function tick(token, to, link, style, animation) {
   // Core flags this itself whenever x or y changed, but a link can end on a
   // frame where the position is already final and the lift still is not.
   token.renderFlags.set({ refreshPosition: true });
+  redraw(link.riders);
+}
+
+/** Have tokens put their art where their lift says, on the next frame. */
+function redraw(tokens) {
+  for (const token of tokens) if (!token.destroyed) token.renderFlags.set({ refreshPosition: true });
+}
+
+/**
+ * How far off the ground a token is drawn: its own lift, or that of whatever
+ * is carrying it, whichever is higher.
+ * @param {Token} token
+ * @returns {number} 0 to 1
+ */
+function liftOf(token) {
+  let lift = states.get(token)?.lift ?? 0;
+  const seen = new Set([token]);
+  for (let carrier = carrierOf(token); carrier && !seen.has(carrier); carrier = carrierOf(carrier)) {
+    seen.add(carrier);
+    lift = Math.max(lift, states.get(carrier)?.lift ?? 0);
+  }
+  return lift;
 }
 
 /**
@@ -201,6 +230,7 @@ export function onLinkSettled(token) {
   if (state.lift === 0) return;
   state.lift = 0;
   token.renderFlags.set({ refreshPosition: true });
+  redraw(ridersOf(token));
 }
 
 /* -------------------------------------------- */
@@ -218,13 +248,13 @@ export function captureBaseScale(token) {
   const state = stateOf(token);
   state.baseScale = { x: mesh.scale.x, y: mesh.scale.y };
   state.scaled = false;
-  applyScale(token, state);
+  applyScale(token, state, liftOf(token));
 }
 
-function applyScale(token, state) {
+function applyScale(token, state, lift) {
   const base = state.baseScale;
   if (!base) return;
-  const boost = (state.lift > 0) ? (setting(SETTINGS.liftScale) ?? 0) * state.lift : 0;
+  const boost = (lift > 0) ? (setting(SETTINGS.liftScale) ?? 0) * lift : 0;
   if (boost > 0) {
     token.mesh.scale.set(base.x * (1 + boost), base.y * (1 + boost));
     state.scaled = true;
@@ -245,9 +275,10 @@ export function applyLift(token) {
   if (!state) return;
   const mesh = token.mesh;
   if (!mesh) return;
-  if (state.lift > 0) {
-    const height = (setting(SETTINGS.liftHeight) ?? 0) * canvas.grid.size * state.lift;
+  const lift = liftOf(token);
+  if (lift > 0) {
+    const height = (setting(SETTINGS.liftHeight) ?? 0) * canvas.grid.size * lift;
     mesh.position.y -= height;
   }
-  applyScale(token, state);
+  applyScale(token, state, lift);
 }

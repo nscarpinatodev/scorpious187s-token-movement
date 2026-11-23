@@ -106,6 +106,27 @@ export function cumulativeLengths(points) {
 }
 
 /**
+ * Which points of a route are drawn, when some of its legs are not.
+ *
+ * A leg can be travelled in a way that is not meant to be shown: a rider
+ * carried by its mount, a token shoved aside. A point is drawn when a leg
+ * that is shown starts or ends there, and the rest are left out.
+ * @param {boolean[]} hidden   For each point, whether the leg arriving at it is hidden
+ * @returns {{index: number, broken: boolean}[]} The points to draw, in order.
+ *   `broken` when the leg arriving is not shown, so no line leads in.
+ */
+export function drawnPoints(hidden) {
+  const last = hidden.length - 1;
+  const points = [];
+  for (let index = 0; index <= last; index++) {
+    const arrives = (index > 0) && !hidden[index];
+    const leaves = (index < last) && !hidden[index + 1];
+    if (arrives || leaves) points.push({ index, broken: !arrives });
+  }
+  return points;
+}
+
+/**
  * How far along a route a point travelling it has got.
  *
  * The answer never goes backwards, and it is looked for from where the point
