@@ -36,7 +36,7 @@ function rideOf(token) {
   if (!api || !document) return null;
   const mount = api.getMount?.(document)?.object ?? null;
   if (!mount || (mount === token) || mount.destroyed) return null;
-  // Token Mounting 0.5.1 answers this itself; before that, the seat is on the rider's flag.
+  // Token Mounting 0.6.0 answers this itself; before that, the seat is on the rider's flag.
   const steers = typeof api.isPilot === 'function'
     ? !!api.isPilot(document)
     : (document.getFlag?.(MOUNTING_ID, 'mount')?.seat ?? 0) === (api.pilotSeat ?? 0);

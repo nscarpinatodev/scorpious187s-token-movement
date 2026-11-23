@@ -5,6 +5,7 @@
 Works with Scorpious187's Token Mounting.
 
 - A rider who steers a mount is shown the mount's range: its speed and what it has left this turn. Before, the range was the rider's own, though it is the mount that moves and pays.
+- The range follows the token a drag is really moving. Token Mounting 0.6.0 hands a rider's drag to its mount; the range, and the route it follows, are then the mount's from the first frame.
 - A passenger is shown no range and no lit route, since they cannot move until they dismount.
 - Riders rise and fall with their mount. Before, the mount hopped underneath riders who slid along flat.
 - A token carried by its mount no longer gets a trail for the ride. Any movement action marked as not visualized is now left out of trails, as core's ruler leaves it out.

@@ -19,6 +19,24 @@ import { advanceTrail } from './trail.js';
 
 const MIXED = Symbol.for(`${MODULE_ID}.mixed`);
 
+/**
+ * The token a drag is moving, which is not always the one it began on.
+ *
+ * Core plans a route for each token in the drag, and normally the token under
+ * the pointer is one of them. Another module can hand the drag to a different
+ * token before it starts: Token Mounting does, so that dragging a rider drags
+ * its mount. The range to show is then that token's, and it is that token
+ * whose route core goes on to plan.
+ * @param {Token} token   The token the drag began on
+ * @param {object} event  The drag event, whose data lists the tokens core is dragging
+ * @returns {Token}
+ */
+function draggedToken(token, event) {
+  const contexts = event?.interactionData?.contexts;
+  if (!contexts || contexts[token.document.id]) return token;
+  return Object.values(contexts)[0]?.token ?? token;
+}
+
 export function installTokenMixin() {
   const Base = CONFIG.Token.objectClass;
   if (!Base || Base[MIXED]) return;
@@ -76,13 +94,13 @@ export function installTokenMixin() {
     /** @override */
     _initializeDragLeft(event) {
       super._initializeDragLeft(event);
-      guarded('range overlay', () => rangeOverlay.onDragStart(this));
+      guarded('range overlay', () => rangeOverlay.onDragStart(draggedToken(this, event)));
     }
 
     /** @override */
     _finalizeDragLeft(event) {
       super._finalizeDragLeft(event);
-      guarded('range overlay', () => rangeOverlay.onDragEnd(this));
+      guarded('range overlay', () => rangeOverlay.onDragEnd(draggedToken(this, event)));
     }
   }
 
