@@ -1,6 +1,7 @@
 import { SETTINGS, STEP_SOUND_SETS, STEP_SOUND_AUTO } from './constants.js';
 import { setting } from './settings.js';
 import { armorClassOf, DEFAULT_ARMOR } from './armor.js';
+import { sizeClassOf, busFor, SIZE_EFFECTS } from './weight.js';
 import { guarded } from './logger.js';
 
 /** Minimum gap between two step sounds, in ms. */
@@ -32,10 +33,43 @@ export function stepSources(token) {
 }
 
 /**
+ * The size a token's steps are weighted for, or null for an ordinary step:
+ * one space across or smaller, or this user has the weighting switched off.
+ * @param {object} [token]
+ * @returns {'large'|'huge'|'gargantuan'|null}
+ */
+export function stepWeight(token) {
+  return setting(SETTINGS.stepWeight) ? sizeClassOf(token) : null;
+}
+
+/**
+ * Start one file playing, through the effects for a size if one is given.
+ *
+ * This is game.audio.play with one thing added: a big creature's step is sent
+ * to that size's shared effects in place of the channel's output, and played
+ * lower. The effects still end at the channel's output, so the Interface
+ * volume slider applies as it always did.
+ */
+async function start(src, volume, size) {
+  const context = game.audio.interface;
+  const sound = new foundry.audio.Sound(src, { context });
+  await sound.load();
+  const bus = size ? busFor(context, size) : null;
+  if (bus) sound.destination = bus;
+  const playing = sound.play({ volume });
+  // The source exists from the moment play is called. A file long enough to
+  // be streamed has no detune; it keeps its pitch and still gets the rest.
+  const detune = bus ? sound.sourceNode?.detune : null;
+  if (detune) detune.value = SIZE_EFFECTS[size].detune;
+  return playing;
+}
+
+/**
  * Play one step. Local only: every client animates the move itself, so each
  * plays its own steps for the tokens it can see and nothing crosses the socket.
  * @param {number} index    Running step count; walks through the set's variants.
- * @param {object} [token]  The token stepping, for the sound of what it wears.
+ * @param {object} [token]  The token stepping, for the sound of what it wears
+ *                          and how big it is.
  */
 export function playStep(index, token) {
   if (!setting(SETTINGS.stepSounds)) return;
@@ -54,9 +88,9 @@ export function playStep(index, token) {
 
   const sources = stepSources(token);
   const src = sources[index % sources.length];
+  const size = stepWeight(token);
   guarded('step sound', () => {
-    const playing = game.audio.play(src, { volume, context: game.audio.interface });
-    playing?.catch?.(() => {});
+    start(src, volume, size).catch(() => {});
   });
 }
 

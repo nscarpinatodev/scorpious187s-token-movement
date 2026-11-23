@@ -34,6 +34,10 @@
         "Heavy": "Heavy armor for everyone",
         "Classic": "Classic tap (the original sound)"
       },
+      "stepWeight": {
+        "Name": "Big creatures sound big",
+        "Hint": "Steps from a token two or more spaces across are played lower, with more bass, and ring in the room after they land: a little for Large, more for Huge, most for Gargantuan. It goes by the size of the token, so it works in any game system and with any step sound. Untick to hear every token the same."
+      },
       "stepSound": {
         "Name": "Custom step sound",
         "Hint": "An audio file to play for every step instead of the built-in sounds. Leave blank for the built-in sounds."

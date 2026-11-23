@@ -3,7 +3,7 @@
 Makes moving a token feel like moving a miniature, on any game system, for Foundry VTT v14.
 
 - **Lift and hop.** A moving token rises off the map, hops from space to space and lands. Or pick the glide: lift once, slide, set down.
-- **Step sounds.** A footstep each time a token you can see lands on a space, and it sounds like what the token wears: cloth when unarmored, leather in light armor, leather and mail in medium, plate in heavy. Or one sound for everyone, or your own file.
+- **Step sounds.** A footstep each time a token you can see lands on a space, and it sounds like what the token wears: cloth when unarmored, leather in light armor, leather and mail in medium, plate in heavy. Or one sound for everyone, or your own file. Large, Huge and Gargantuan tokens step lower, with more bass, and ring in the room.
 - **Reachable spaces.** While you drag a token, the spaces it can get to light up as tiles with a soft glowing edge, in bands: its move, then a dash (or a second and third Stride in Pathfinder and Starfinder 2e). The route you are dragging is a lit strip with a ring on every step, and it stays under the token as it walks, dimming behind it.
 - **A way round.** When the straight route is blocked, the cheapest route round is planned for you.
 - **System-agnostic.** Speeds are read from a data path on the actor. Presets cover common systems; one setting covers the rest.
@@ -171,13 +171,13 @@ In combat, the range shrinks by what the token has already moved this turn, usin
 
 ## Settings
 
-Per user: find a way round (pathfinding) on or off, animation style (hop, glide, or Foundry default), lift height and zoom, step sounds on or off, their volume (they play on Foundry's Interface audio channel) and which footsteps you hear (matched to each token's armor, one armor class for everyone, or the original tap), whether to show reachable spaces, range style (tiles or flat), animate the range, light up the route, colour scheme, band colours and opacity.
+Per user: find a way round (pathfinding) on or off, animation style (hop, glide, or Foundry default), lift height and zoom, step sounds on or off, their volume (they play on Foundry's Interface audio channel), which footsteps you hear (matched to each token's armor, one armor class for everyone, or the original tap) and whether big creatures sound big, whether to show reachable spaces, range style (tiles or flat), animate the range, light up the route, colour scheme, band colours and opacity.
 
 Per world: walk speed (how fast tokens travel, in spaces per second; Foundry's own is 6), custom step sound, speed data path and unit, fallback speed, range bands (for example `1, 2, 3`), subtract movement already used, only show in combat, and the largest range to draw.
 
 ![Settings: walk speed, step sounds and their volume](docs/screenshots/04-settings-animation.jpg)
 
-Per token: Step sound, on the Identity tab of Token Configuration. It says what that token's footsteps sound like when the actor has no armor to read, which is most monsters and NPCs. Eight steps of each set, unarmored through heavy: [armor-steps.mp3](docs/media/armor-steps.mp3).
+Per token: Step sound, on the Identity tab of Token Configuration. It says what that token's footsteps sound like when the actor has no armor to read, which is most monsters and NPCs. Eight steps of each set, unarmored through heavy: [armor-steps.mp3](docs/media/armor-steps.mp3). And how size changes them, six steps each at ordinary size, Large, Huge and Gargantuan, first unarmored and then in heavy armor: [size-steps.mp3](docs/media/size-steps.mp3).
 
 ![Token Configuration: Step sound](docs/screenshots/14-token-step-sound.jpg)
 
@@ -206,6 +206,7 @@ api.getSpeed(token, 'walk');          // scene units, 0 if unknown
 api.getMovementRanges(token, 'walk'); // [{distance, color, alpha}]
 api.getArmorClass(token);             // 'unarmored' | 'light' | 'medium' | 'heavy'
 api.getStepSounds(token);             // the files this token's steps are drawn from
+api.getStepWeight(token);             // 'large' | 'huge' | 'gargantuan', or null for an ordinary step
 api.pinRange(token);                  // or api.pinRange() to unpin
 api.refreshRange();
 api.rangeSnapshot();                  // what the overlay shows now, as plain data; null if nothing

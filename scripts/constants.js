@@ -19,6 +19,7 @@ export const SETTINGS = Object.freeze({
   stepSounds: 'stepSounds',
   stepVolume: 'stepVolume',
   stepSoundSet: 'stepSoundSet',
+  stepWeight: 'stepWeight',
   // World-scoped: these decide what the rules are, not how they look.
   stepSound: 'stepSound',
   walkSpeed: 'walkSpeed',

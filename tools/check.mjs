@@ -132,6 +132,49 @@ check('armor is read where each system keeps it', () => {
   }
 });
 
+const { sizeClassOf, impulseResponse, SIZE_CLASSES, SIZE_EFFECTS } = await import(pathToFileURL(join(root, 'scripts/weight.js')));
+check('a token is weighted by how many spaces it is across', () => {
+  const sized = (width, height = width) => ({ width, height });
+  assert(sizeClassOf(sized(1)) === null, 'one space');
+  assert(sizeClassOf(sized(0.5)) === null, 'half a space');
+  assert(sizeClassOf(sized(2)) === 'large', 'two spaces');
+  assert(sizeClassOf(sized(3)) === 'huge', 'three spaces');
+  assert(sizeClassOf(sized(4)) === 'gargantuan', 'four spaces');
+  assert(sizeClassOf(sized(6)) === 'gargantuan', 'more than four');
+  assert(sizeClassOf(sized(1, 3)) === 'huge', 'the longer side counts');
+  assert(sizeClassOf({ document: sized(2) }) === 'large', 'a placed token, not only its document');
+  assert(sizeClassOf(null) === null, 'no token');
+  assert(sizeClassOf({}) === null, 'a token with no size');
+});
+check('each size is weightier than the one before', () => {
+  assert(Object.keys(SIZE_EFFECTS).join() === SIZE_CLASSES.join(), 'an effect for every size, and no others');
+  let last = { detune: 0, bassDb: 0, wet: 0, tail: 0, trim: 0 };
+  for (const name of SIZE_CLASSES) {
+    const effect = SIZE_EFFECTS[name];
+    assert(effect.detune < last.detune, `${name} is not lower`);
+    assert(effect.bassDb > last.bassDb, `${name} has no more bass`);
+    assert((effect.wet > last.wet) && (effect.tail > last.tail), `${name} does not ring longer`);
+    assert(effect.trim < last.trim, `${name} is not turned down to make room for its bass`);
+    last = effect;
+  }
+});
+check('the room a big step rings in dies away and is the same every time', () => {
+  const rate = 48000;
+  const [left, right] = impulseResponse(rate, 1);
+  assert(left.length === right.length, 'two channels of one length');
+  assert(Math.abs((left.length / rate) - 1.012) < 0.001, `a second and a short gap, got ${left.length / rate}`);
+  assert(left.every(Number.isFinite) && right.every(Number.isFinite), 'finite');
+  assert(left.slice(0, 500).every((v) => v === 0), 'silent at first, so the step stays distinct');
+  const rms = (x, from, to) => Math.sqrt(x.slice(from, to).reduce((sum, v) => sum + (v * v), 0) / (to - from));
+  const early = rms(left, 1000, 5000);
+  const late = rms(left, left.length - 4000, left.length);
+  assert(early > 0, 'it makes a sound');
+  assert(late < early / 200, `the end is far quieter than the start (${early} to ${late})`);
+  assert(left.some((v, i) => v !== right[i]), 'left and right differ');
+  const again = impulseResponse(rate, 1)[0];
+  assert(left.every((v, i) => v === again[i]), 'the same every time');
+});
+
 const { armorClassOf } = await import(pathToFileURL(join(root, 'scripts/armor.js')));
 check('armor class: the token, then a hook, then the actor, then unarmored', () => {
   const saved = { game: globalThis.game, Hooks: globalThis.Hooks };

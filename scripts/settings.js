@@ -113,6 +113,7 @@ export function registerSettings() {
     },
     onChange: soundChanged,
   });
+  register(SETTINGS.stepWeight, { scope: 'client', type: Boolean, default: true });
   register(SETTINGS.stepSound, {
     scope: 'world',
     type: String,
