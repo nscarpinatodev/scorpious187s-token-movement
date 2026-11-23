@@ -10,8 +10,9 @@ import { installRulerMixin } from './ruler-mixin.js';
 import { rangeOverlay } from './overlay.js';
 import { refreshTrails, forgetTrails, trailSnapshot } from './trail.js';
 import { getMovementRanges, getSpeed } from './speed.js';
-import { preloadStepSounds, stepSources, stepWeight } from './sounds.js';
-import { armorClassOf } from './armor.js';
+import { preloadStepSounds, stepSources, stepWeight, movementSound } from './sounds.js';
+import { armorClassOf, stepClassOf } from './armor.js';
+import { hasWings } from './creatures.js';
 import { registerTokenConfig } from './token-config.js';
 import { SYSTEM_PRESETS } from './systems.js';
 import { registerFollow } from './follow.js';
@@ -47,11 +48,23 @@ Hooks.once('init', () => {
     presets: SYSTEM_PRESETS,
     getSpeed,
     getMovementRanges,
-    /** What a token's steps sound like: 'unarmored', 'light', 'medium' or 'heavy'. */
+    /** What a token wears: 'unarmored', 'light', 'medium' or 'heavy'. */
     getArmorClass: (token) => armorClassOf(token),
-    /** The sound files a token's steps are drawn from, for this user. */
+    /** What a token's steps sound like: an armor class, or 'hooves'. */
+    getStepClass: (token) => stepClassOf(token),
+    /** Whether a token is heard flapping when it flies. */
+    hasWings: (token) => hasWings(token),
+    /**
+     * What a token sounds like moving by an action (its own if none is given),
+     * for this user: `{kind, sources, every, size}`, or null for silence.
+     */
+    getMovementSound: (token, action) => {
+      const sound = movementSound(token, action);
+      return sound ? { ...sound, sources: [...sound.sources] } : null;
+    },
+    /** The sound files a token's steps on foot are drawn from, for this user. */
     getStepSounds: (token) => [...stepSources(token)],
-    /** The size a token's steps are weighted for: 'large', 'huge', 'gargantuan' or null. */
+    /** The size a token's steps on foot are weighted for: 'large', 'huge', 'gargantuan' or null. */
     getStepWeight: (token) => stepWeight(token),
     /** Redraw the range if one is showing, e.g. after changing an actor's speed. */
     refreshRange: () => rangeOverlay.refresh(),

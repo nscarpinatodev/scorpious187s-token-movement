@@ -18,7 +18,7 @@
       },
       "stepSounds": {
         "Name": "Step sounds",
-        "Hint": "Play a sound each time a moving token you can see lands on a space. Untick to turn the sounds off for yourself. They play on Foundry's Interface audio channel."
+        "Hint": "Play a sound each time a moving token you can see lands on a space: a footstep, or for a horse the next stride of a gallop. A winged creature is heard flapping while its movement action is Fly. Untick to turn the sounds off for yourself. They play on Foundry's Interface audio channel."
       },
       "stepVolume": {
         "Name": "Step sound volume",
@@ -26,8 +26,8 @@
       },
       "stepSoundSet": {
         "Name": "Step sound",
-        "Hint": "Which footsteps you hear. Match what the token wears picks a set for each token from its armor: cloth for unarmored, leather for light, leather and mail for medium, plate for heavy. The armor is read from the actor in D&D 5e, Pathfinder 2e and Starfinder 2e, and a GM can set it for any token in Token Configuration. The other choices use one set for every token.",
-        "Auto": "Match what the token wears",
+        "Hint": "Which footsteps you hear. Match the token picks a set for each token. A creature named as a horse or another hoofed animal gets hoofbeats. Anything else goes by its armor: cloth for unarmored, leather for light, leather and mail for medium, plate for heavy. The armor is read from the actor in D&D 5e, Pathfinder 2e and Starfinder 2e, and a GM can set the sound for any token in Token Configuration. The other choices use one set for every token.",
+        "Auto": "Match the token",
         "Unarmored": "Unarmored for everyone",
         "Light": "Light armor for everyone",
         "Medium": "Medium armor for everyone",
@@ -36,7 +36,7 @@
       },
       "stepWeight": {
         "Name": "Big creatures sound big",
-        "Hint": "Steps from a token two or more spaces across are played lower, with more bass, and ring in the room after they land: a little for Large, more for Huge, most for Gargantuan. It goes by the size of the token, so it works in any game system and with any step sound. Untick to hear every token the same."
+        "Hint": "Steps from a token two or more spaces across are played lower, with more bass, and ring in the room after they land: a little for Large, more for Huge, most for Gargantuan. It goes by the size of the token, so it works in any game system and with any step sound. Hoofbeats and wingbeats are recordings of something Large already, so they change from Huge up. Untick to hear every token the same."
       },
       "stepSound": {
         "Name": "Custom step sound",
@@ -129,12 +129,20 @@
     "TokenConfig": {
       "armor": {
         "Label": "Step sound",
-        "Hint": "What this token's footsteps sound like. Go by what the actor wears reads the equipped armor where the game system has it, and is unarmored otherwise.",
-        "detect": "Go by what the actor wears",
+        "Hint": "What this token's steps sound like. Go by the creature gives hoofbeats to anything named as a horse or another hoofed animal, reads the armor the actor wears where the game system has it, and is unarmored otherwise.",
+        "detect": "Go by the creature",
         "unarmored": "Unarmored",
         "light": "Light armor",
         "medium": "Medium armor",
-        "heavy": "Heavy armor"
+        "heavy": "Heavy armor",
+        "hooves": "Hooves"
+      },
+      "flight": {
+        "Label": "Flight sound",
+        "Hint": "What this token sounds like while its movement action is Fly. Go by the creature gives wingbeats to anything named as a dragon, a bird or another winged animal, and nothing to the rest. On the ground it makes its step sound, wings or no wings.",
+        "detect": "Go by the creature",
+        "wings": "Wingbeats",
+        "none": "Silent"
       }
     },
     "Keybindings": {

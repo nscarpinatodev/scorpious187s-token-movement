@@ -2,6 +2,15 @@
 
 ## 0.1.1 (unreleased)
 
+Hooves and wings.
+
+- A horse gallops. Anything named as a hoofed animal (horse, pony, mule, elk, centaur and so on, in the token's name or its actor's) has hoofbeats for steps: one stride of a gallop, three beats, on every third space or so. It starts on a landing and waits out its own length, so it keeps time with the token and keeps its pace at any walk speed.
+- Wings are heard in the air and nowhere else. Anything named as a winged creature (dragon, wyvern, griffon, eagle, bat and so on) beats its wings about once a second while its movement action is Fly. Walking, the same creature makes its footsteps and no wing sound. A creature with no wings still flies in silence.
+- Token Configuration: Step sound has a Hooves choice, and there is a new Flight sound (wingbeats, silent, or go by the creature), for what the names miss.
+- Hoofbeats and wingbeats are recordings of something Large, so "big creatures sound big" leaves a Large horse as recorded and lowers them from Huge up.
+- The `step` hook is passed the sound of the landing, and the API gains `getStepClass`, `hasWings` and `getMovementSound`.
+- The recordings are public-domain (CC0) work: a gallop on grass by StephenSaldanha, cut to one stride by congusbongus, and a wing flap by AntumDeluge from a recording by dave.des. The gallop had ticks in it, which `tools/build-creature-sounds.mjs` finds and turns down. Credited in `assets/sounds/CREDITS.md`.
+
 Works with Scorpious187's Token Mounting.
 
 - A rider who steers a mount is shown the mount's range: its speed and what it has left this turn. Before, the range was the rider's own, though it is the mount that moves and pays.

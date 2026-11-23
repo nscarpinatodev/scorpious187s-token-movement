@@ -42,6 +42,21 @@ export function sizeClassOf(token) {
   return null;
 }
 
+/**
+ * The size to weight a sound for, when the recording is itself of something
+ * big: a size is counted from the one recorded. A Large horse is a horse as
+ * recorded; a Huge one is one size up from that, and sounds as a Large walker
+ * does beside a Medium one.
+ *
+ * @param {'large'|'huge'|'gargantuan'|null} size      The token's own
+ * @param {'large'|'huge'|'gargantuan'|null} recorded  What the recording is of
+ * @returns {'large'|'huge'|'gargantuan'|null}
+ */
+export function sizeBeyond(size, recorded) {
+  const steps = SIZE_CLASSES.indexOf(size) - SIZE_CLASSES.indexOf(recorded);
+  return steps > 0 ? SIZE_CLASSES[steps - 1] : null;
+}
+
 /** A small repeatable random source, so the room is the same every session. */
 function noise(seed) {
   let a = seed >>> 0;

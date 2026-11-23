@@ -1,7 +1,11 @@
-import { SETTINGS, STEP_SOUND_SETS, STEP_SOUND_AUTO } from './constants.js';
+import {
+  SETTINGS, STEP_SOUND_SETS, STEP_SOUND_AUTO, FLIGHT_SOUND_SETS, SOUND_RHYTHMS,
+  GLIDING_ACTIONS, FLYING_ACTIONS,
+} from './constants.js';
 import { setting } from './settings.js';
-import { armorClassOf, DEFAULT_ARMOR } from './armor.js';
-import { sizeClassOf, busFor, SIZE_EFFECTS } from './weight.js';
+import { stepClassOf, DEFAULT_ARMOR } from './armor.js';
+import { hasWings } from './creatures.js';
+import { sizeClassOf, sizeBeyond, busFor, SIZE_EFFECTS } from './weight.js';
 import { guarded } from './logger.js';
 
 /** Minimum gap between two step sounds, in ms. */
@@ -19,27 +23,79 @@ function chosenSet() {
 }
 
 /**
- * The files a token's steps are drawn from: the world's custom sound if there
- * is one, else the set this user picked, else the set for the token's armor.
+ * The size a sound is weighted for, or null to play it as it is: the token is
+ * no bigger than what was recorded, or this user has the weighting off.
+ */
+function weightFor(token, kind) {
+  if (!setting(SETTINGS.stepWeight)) return null;
+  return sizeBeyond(sizeClassOf(token), SOUND_RHYTHMS[kind]?.recorded ?? null);
+}
+
+/**
+ * @typedef {object} MovementSound
+ * @property {string} kind                  'unarmored' … 'hooves', 'wings', 'classic' or 'custom'
+ * @property {readonly string[]} sources    The files it is drawn from, played in turn
+ * @property {number} every                 Milliseconds of travel between one and the next, at
+ *                                          the least; 0 for a sound on every landing
+ * @property {'large'|'huge'|'gargantuan'|null} size  The size it is weighted for
+ */
+
+/**
+ * What a token sounds like while it moves by a movement action.
+ *
+ * On foot, its steps: the world's custom sound if there is one, else the set
+ * this user picked, else the set for what the token is and wears. In the air,
+ * wingbeats if it has wings and nothing if it has not: a wizard under a Fly
+ * spell goes quietly, and a dragon is only heard flapping while it flies, not
+ * while it walks. Swimming, burrowing and driving make no sound.
+ *
+ * @param {object} token     A Token or a TokenDocument
+ * @param {string} [action]  The movement action; the token's own if not given
+ * @returns {MovementSound|null}  null for silence
+ */
+export function movementSound(token, action) {
+  action ??= (token?.document ?? token)?.movementAction;
+  if (FLYING_ACTIONS.includes(action)) {
+    if (!hasWings(token)) return null;
+    return { kind: 'wings', sources: FLIGHT_SOUND_SETS.wings, every: SOUND_RHYTHMS.wings.every, size: weightFor(token, 'wings') };
+  }
+  if (GLIDING_ACTIONS.includes(action)) return null;
+
+  const custom = customSound();
+  if (custom) return { kind: 'custom', sources: [custom], every: 0, size: weightFor(token, 'custom') };
+  const choice = chosenSet();
+  const wanted = choice === STEP_SOUND_AUTO ? stepClassOf(token) : choice;
+  const kind = wanted in STEP_SOUND_SETS ? wanted : DEFAULT_ARMOR;
+  return { kind, sources: STEP_SOUND_SETS[kind], every: SOUND_RHYTHMS[kind]?.every ?? 0, size: weightFor(token, kind) };
+}
+
+/**
+ * One sound out of a movement sound: the file for the nth time it plays.
+ * @param {MovementSound} sound
+ * @param {number} count  How many have played before it
+ * @returns {{src: string, size: string|null, kind: string}}
+ */
+export function soundAt(sound, count) {
+  return { src: sound.sources[count % sound.sources.length], size: sound.size, kind: sound.kind };
+}
+
+/**
+ * The files a token's steps on foot are drawn from, for this user.
  * @param {object} [token]
  * @returns {readonly string[]}
  */
 export function stepSources(token) {
-  const custom = customSound();
-  if (custom) return [custom];
-  const choice = chosenSet();
-  const key = choice === STEP_SOUND_AUTO ? armorClassOf(token) : choice;
-  return STEP_SOUND_SETS[key] ?? STEP_SOUND_SETS[DEFAULT_ARMOR];
+  return movementSound(token, 'walk').sources;
 }
 
 /**
- * The size a token's steps are weighted for, or null for an ordinary step:
- * one space across or smaller, or this user has the weighting switched off.
+ * The size a token's steps on foot are weighted for, or null for a step
+ * played as it is.
  * @param {object} [token]
  * @returns {'large'|'huge'|'gargantuan'|null}
  */
 export function stepWeight(token) {
-  return setting(SETTINGS.stepWeight) ? sizeClassOf(token) : null;
+  return movementSound(token, 'walk').size;
 }
 
 /**
@@ -65,13 +121,12 @@ async function start(src, volume, size) {
 }
 
 /**
- * Play one step. Local only: every client animates the move itself, so each
- * plays its own steps for the tokens it can see and nothing crosses the socket.
- * @param {number} index    Running step count; walks through the set's variants.
- * @param {object} [token]  The token stepping, for the sound of what it wears
- *                          and how big it is.
+ * Play one sound of a move. Local only: every client animates the move itself,
+ * so each plays its own sounds for the tokens it can see and nothing crosses
+ * the socket.
+ * @param {{src: string, size: string|null}} sound  From soundAt
  */
-export function playStep(index, token) {
+export function playSound(sound) {
   if (!setting(SETTINGS.stepSounds)) return;
   const volume = setting(SETTINGS.stepVolume) ?? 0.4;
   if (!(volume > 0)) return;
@@ -86,15 +141,12 @@ export function playStep(index, token) {
   if (now - lastPlayed < MIN_GAP_MS) return;
   lastPlayed = now;
 
-  const sources = stepSources(token);
-  const src = sources[index % sources.length];
-  const size = stepWeight(token);
   guarded('step sound', () => {
-    start(src, volume, size).catch(() => {});
+    start(sound.src, volume, sound.size).catch(() => {});
   });
 }
 
-/** Warm the cache so the first step of a session is not late. */
+/** Warm the cache so the first sound of a session is not late. */
 export function preloadStepSounds() {
   const custom = customSound();
   const choice = chosenSet();
@@ -102,6 +154,8 @@ export function preloadStepSounds() {
   if (custom) sources = [custom];
   else if (choice === STEP_SOUND_AUTO) sources = Object.keys(STEP_SOUND_SETS).filter((key) => key !== 'classic').flatMap((key) => STEP_SOUND_SETS[key]);
   else sources = STEP_SOUND_SETS[choice];
+  // Wings are heard whatever the steps are set to.
+  sources = [...sources, ...Object.values(FLIGHT_SOUND_SETS).flat()];
   for (const src of sources) {
     guarded('step sound preload', () => {
       foundry.audio.AudioHelper.preloadSound(src)?.catch?.(() => {});

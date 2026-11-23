@@ -61,7 +61,9 @@ for (const file of scripts) {
   });
 }
 
-const { SETTINGS, STEP_SOUND_SETS, ARMOR_CLASSES, MODULE_ID } = await import(pathToFileURL(join(root, 'scripts/constants.js')));
+const {
+  SETTINGS, STEP_SOUND_SETS, FLIGHT_SOUND_SETS, SOUND_RHYTHMS, ARMOR_CLASSES, STEP_CLASSES, FLIGHT_CLASSES, FLAGS, MODULE_ID,
+} = await import(pathToFileURL(join(root, 'scripts/constants.js')));
 const lang = JSON.parse(readFileSync(join(root, 'lang/en.json'), 'utf8'));
 
 check('every setting has a name and hint', () => {
@@ -77,12 +79,31 @@ check('every setting is registered', () => {
   }
 });
 check('built-in sounds exist', () => {
-  for (const [name, sources] of Object.entries(STEP_SOUND_SETS)) {
-    assert(sources.length >= 2, `${name} needs more than one variant`);
+  for (const [name, sources] of Object.entries({ ...STEP_SOUND_SETS, ...FLIGHT_SOUND_SETS })) {
+    // A sound on every landing needs variants, or a walk is one sample over
+    // and over. A stride or a wingbeat is spaced out and can be one recording.
+    assert((sources.length >= 2) || (SOUND_RHYTHMS[name]?.every > 0), `${name} needs more than one variant`);
     for (const src of sources) {
       const relative = src.replace(`modules/${MODULE_ID}/`, '');
-      assert(existsSync(join(root, relative)), `missing ${relative} (see tools/build-step-sounds.mjs and tools/gen-sounds.mjs)`);
+      assert(existsSync(join(root, relative)), `missing ${relative} (see tools/build-step-sounds.mjs, tools/build-creature-sounds.mjs and tools/gen-sounds.mjs)`);
     }
+  }
+});
+check('every kind of step and of flight has sounds and a token-config label', () => {
+  for (const name of STEP_CLASSES) {
+    assert(STEP_SOUND_SETS[name], `no step sounds for ${name}`);
+    assert(lang.S187MOVE.TokenConfig[FLAGS.armor][name], `lang lacks TokenConfig.armor.${name}`);
+  }
+  for (const name of FLIGHT_CLASSES) {
+    assert((name === 'none') || FLIGHT_SOUND_SETS[name], `no flight sounds for ${name}`);
+    assert(lang.S187MOVE.TokenConfig[FLAGS.flight][name], `lang lacks TokenConfig.flight.${name}`);
+  }
+  for (const flag of [FLAGS.armor, FLAGS.flight]) {
+    const entry = lang.S187MOVE.TokenConfig[flag];
+    assert(entry.Label && entry.Hint && entry.detect, `lang lacks TokenConfig.${flag} Label, Hint or detect`);
+  }
+  for (const name of Object.keys(SOUND_RHYTHMS)) {
+    assert(STEP_SOUND_SETS[name] || FLIGHT_SOUND_SETS[name], `a rhythm for ${name}, which has no sounds`);
   }
 });
 check('every armor class has sounds, a setting choice and a token-config label', () => {
@@ -132,7 +153,16 @@ check('armor is read where each system keeps it', () => {
   }
 });
 
-const { sizeClassOf, impulseResponse, SIZE_CLASSES, SIZE_EFFECTS } = await import(pathToFileURL(join(root, 'scripts/weight.js')));
+const { sizeClassOf, sizeBeyond, impulseResponse, SIZE_CLASSES, SIZE_EFFECTS } = await import(pathToFileURL(join(root, 'scripts/weight.js')));
+check('a recording of something big is weighted from its own size up', () => {
+  assert(sizeBeyond('large', null) === 'large', 'a footstep under a Large token');
+  assert(sizeBeyond('gargantuan', null) === 'gargantuan', 'a footstep under a Gargantuan token');
+  assert(sizeBeyond(null, null) === null, 'a footstep under an ordinary token');
+  assert(sizeBeyond('large', 'large') === null, 'a horse as recorded');
+  assert(sizeBeyond(null, 'large') === null, 'a pony is not made lighter');
+  assert(sizeBeyond('huge', 'large') === 'large', 'one size up from the recording');
+  assert(sizeBeyond('gargantuan', 'large') === 'huge', 'two sizes up from the recording');
+});
 check('a token is weighted by how many spaces it is across', () => {
   const sized = (width, height = width) => ({ width, height });
   assert(sizeClassOf(sized(1)) === null, 'one space');
@@ -200,6 +230,118 @@ check('armor class: the token, then a hook, then the actor, then unarmored', () 
     globalThis.game = { system: { id: 'some-other-system' } };
     assert(armorClassOf(token()) === 'unarmored', 'an unknown system');
     assert(armorClassOf(null) === 'unarmored', 'no token');
+  } finally {
+    globalThis.game = saved.game; globalThis.Hooks = saved.Hooks;
+  }
+});
+const { namedIn, hasHooves, hasWings, HOOFED_NAMES, WINGED_NAMES } = await import(pathToFileURL(join(root, 'scripts/creatures.js')));
+check('hooves and wings are read from whole words of a name', () => {
+  for (const name of ['Riding Horse', 'Warhorse', 'two draft horses', 'PONY', 'Giant Elk', 'Nightmare', 'Centaur Trooper']) {
+    assert(namedIn(name, HOOFED_NAMES), `${name} has hooves`);
+  }
+  for (const name of ['Horseshoe Crab', 'Seahorse', 'Oxidiser', 'Wolf', 'Deerstalker', '', undefined, null, 42]) {
+    assert(!namedIn(name, HOOFED_NAMES), `${name} has no hooves`);
+  }
+  for (const name of ['Adult Red Dragon', 'Young Dragons', 'Wyvern', 'Giant Eagle', 'Griffon', 'Bat', 'Pegasus']) {
+    assert(namedIn(name, WINGED_NAMES), `${name} has wings`);
+  }
+  for (const name of ['Dragonborn Fighter', 'Batman', 'Rock', 'Crowbar Thug', 'Wizard']) {
+    assert(!namedIn(name, WINGED_NAMES), `${name} has no wings`);
+  }
+  assert(!namedIn('Horse', []), 'an empty list names nothing');
+});
+check('a token is what it or its actor is called, and wings are what the token says', () => {
+  const token = (name, actorName, flight) => ({ name, actor: actorName ? { name: actorName } : null, flags: flight === undefined ? {} : { [MODULE_ID]: { flight } } });
+  assert(hasHooves(token('Bréagh', 'Riding Horse')), 'the actor is a horse');
+  assert(hasHooves({ document: token('Riding Horse') }), 'a placed token, not only its document');
+  assert(!hasHooves(token('Bréagh', 'Wolf')), 'neither name is hoofed');
+  assert(!hasHooves(null), 'no token');
+  assert(hasWings(token('Smaug', 'Ancient Red Dragon')), 'the actor is a dragon');
+  assert(!hasWings(token('Randal', 'Human Fighter')), 'a man has none');
+  assert(hasWings(token('Randal', 'Human Fighter', 'wings')), 'the token says wings');
+  assert(!hasWings(token('Smaug', 'Ancient Red Dragon', 'none')), 'the token says silent');
+  assert(hasWings(token('Smaug', 'Ancient Red Dragon', '')), 'a blank choice means go by the name');
+  assert(!hasWings(null), 'no token');
+});
+
+const { stepClassOf } = await import(pathToFileURL(join(root, 'scripts/armor.js')));
+check('step class: the token, then a hook, then hooves, then the armor worn', () => {
+  const saved = { game: globalThis.game, Hooks: globalThis.Hooks };
+  let fromHook = null;
+  globalThis.game = { system: { id: 'pf2e' } };
+  globalThis.Hooks = { callAll: (name, document, result) => { if (fromHook) result.armor = fromHook; } };
+  try {
+    const token = (name, armor, worn = null) => ({ name, flags: armor === undefined ? {} : { [MODULE_ID]: { armor } }, actor: { name, wornArmor: worn ? { category: worn } : null } });
+    assert(stepClassOf(token('Riding Horse')) === 'hooves', 'a horse walks on hooves');
+    assert(stepClassOf(token('Warhorse', undefined, 'heavy-barding')) === 'hooves', 'a horse in barding still does');
+    assert(stepClassOf(token('Riding Horse', 'heavy')) === 'heavy', 'the token says heavy');
+    assert(stepClassOf(token('Clockwork Mount', 'hooves')) === 'hooves', 'the token says hooves');
+    assert(armorClassOf(token('Clockwork Mount', 'hooves', 'light')) === 'light', 'hooves are not armor: what it wears is still read');
+    assert(stepClassOf(token('Knight', undefined, 'heavy')) === 'heavy', 'anything else goes by its armor');
+    assert(stepClassOf(token('Knight')) === 'unarmored', 'and is unarmored without');
+    fromHook = 'medium';
+    assert(stepClassOf(token('Riding Horse')) === 'medium', 'a hook overrules the name');
+    fromHook = null;
+    assert(stepClassOf(null) === 'unarmored', 'no token');
+  } finally {
+    globalThis.game = saved.game; globalThis.Hooks = saved.Hooks;
+  }
+});
+
+const { movementSound, soundAt } = await import(pathToFileURL(join(root, 'scripts/sounds.js')));
+check('what a token sounds like depends on how it is moving', () => {
+  const saved = { game: globalThis.game, Hooks: globalThis.Hooks };
+  const settings = { stepSoundSet: 'auto', stepSound: '', stepWeight: true };
+  globalThis.game = { system: { id: 'dnd5e' }, settings: { get: (id, key) => settings[key] } };
+  globalThis.Hooks = { callAll: () => {} };
+  try {
+    const token = (name, width, movementAction = 'walk', flags = {}) => ({ name, width, height: width, movementAction, flags: { [MODULE_ID]: flags }, actor: { name } });
+    const horse = token('Riding Horse', 2);
+    const dragon = token('Adult Red Dragon', 3);
+    const man = token('Randal', 1);
+
+    const hooves = movementSound(horse);
+    assert(hooves.kind === 'hooves', `a horse walking: ${hooves.kind}`);
+    assert(hooves.sources === STEP_SOUND_SETS.hooves, 'from the hoof recordings');
+    assert(hooves.every === SOUND_RHYTHMS.hooves.every, 'a stride at a time, not a sound on every space');
+    assert(hooves.size === null, 'a Large horse is a horse as recorded');
+    assert(movementSound(token('Giant Elk', 3)).size === 'large', 'a Huge one is a size up');
+    assert(movementSound(horse, 'fly') === null, 'a horse has no wings');
+    assert(movementSound(horse, 'swim') === null, 'and swims in silence');
+
+    const walking = movementSound(dragon);
+    assert((walking.kind === 'unarmored') && (walking.every === 0), `a dragon on the ground walks: ${walking.kind}`);
+    assert(walking.size === 'huge', 'and steps as a Huge creature');
+    assert(movementSound(dragon, 'walk').kind === 'unarmored', 'asked about walking outright');
+    const flying = movementSound(dragon, 'fly');
+    assert(flying.kind === 'wings', 'a dragon flying beats its wings');
+    assert(flying.sources === FLIGHT_SOUND_SETS.wings, 'from the wing recordings');
+    assert(flying.every === SOUND_RHYTHMS.wings.every, 'a beat at a time');
+    assert(flying.size === 'large', 'Huge wings are a size up from the recording');
+    assert(movementSound(token('Adult Red Dragon', 3, 'fly')).kind === 'wings', 'the action is the token\'s own when none is given');
+    assert(movementSound(dragon, 'burrow') === null, 'no wings under ground');
+
+    assert(movementSound(man, 'fly') === null, 'a man under a Fly spell goes quietly');
+    assert(movementSound(token('Randal', 1, 'walk', { flight: 'wings' }), 'fly').kind === 'wings', 'unless the token says he has wings');
+    assert(movementSound(token('Adult Red Dragon', 3, 'walk', { flight: 'none' }), 'fly') === null, 'and a dragon told to be silent is');
+    assert(movementSound(man, 'travel').kind === 'unarmored', 'an action a system adds is on foot');
+
+    settings.stepSoundSet = 'heavy';
+    assert(movementSound(horse).kind === 'heavy', 'one set for everyone is for everyone');
+    assert(movementSound(horse).size === 'large', 'and is weighted as any step is');
+    assert(movementSound(dragon, 'fly').kind === 'wings', 'wings are not steps, and are still heard');
+    settings.stepSoundSet = 'auto';
+    settings.stepSound = 'worlds/x/thud.ogg';
+    const custom = movementSound(horse);
+    assert((custom.kind === 'custom') && (custom.sources[0] === 'worlds/x/thud.ogg') && (custom.every === 0), 'the world\'s own sound replaces every step');
+    settings.stepSound = '';
+    settings.stepWeight = false;
+    assert(movementSound(dragon).size === null, 'weighting switched off');
+    assert(movementSound(dragon, 'fly').size === null, 'for wings as well');
+
+    assert(soundAt({ kind: 'light', sources: ['a', 'b', 'c'], size: 'huge' }, 4).src === 'b', 'variants are played in turn');
+    assert(soundAt(hooves, 7).src === STEP_SOUND_SETS.hooves[0], 'one recording is played every time');
+    assert(soundAt(flying, 0).size === 'large', 'the size goes with the sound');
   } finally {
     globalThis.game = saved.game; globalThis.Hooks = saved.Hooks;
   }

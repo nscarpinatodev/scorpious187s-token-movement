@@ -15,22 +15,17 @@
  * A token riding another (see mounts.js) is drawn on top of it and carried
  * along without an arc of its own, so it takes its mount's lift: when the
  * horse hops, the rider goes up with the saddle.
+ *
+ * The same count of spaces is what the sounds keep time to. Every landing is
+ * a chance for a sound; which sound, and whether this landing gets one, is
+ * decided here from what sounds.js says the token sounds like.
  */
 
-import { ANIMATION_STYLES, HOOKS, SETTINGS } from './constants.js';
+import { ANIMATION_STYLES, HOOKS, SETTINGS, GLIDING_ACTIONS } from './constants.js';
 import { setting } from './settings.js';
 import { guarded } from './logger.js';
-import { playStep } from './sounds.js';
+import { movementSound, soundAt, playSound } from './sounds.js';
 import { carrierOf, ridersOf } from './mounts.js';
-
-/**
- * Movement actions with no footfalls. These use the glide even when the hop
- * style is selected, and make no step sounds — a shuttle bouncing across the
- * map is not an improvement. Everything else is assumed to be on foot, which
- * is the right guess for the actions systems add (pf2e moves tokens by
- * "travel" outside encounters).
- */
-const GLIDING_ACTIONS = new Set(['fly', 'swim', 'burrow', 'drive']);
 
 /** How long the glide style takes to rise and to set down, in ms. */
 const RAMP_MS = 140;
@@ -39,7 +34,10 @@ const RAMP_MS = 140;
  * @typedef {object} LiftState
  * @property {number} lift          0 (grounded) … 1 (top of the arc)
  * @property {boolean} airborne     Glide only: already up from a previous link
- * @property {number} steps         Running count of landings, for sound variety
+ * @property {number} steps         Running count of landings
+ * @property {number} clock         Milliseconds this move has been travelling
+ * @property {number} soundAt       Where the clock stood when it last made a sound
+ * @property {number} sounds        Running count of sounds made, for variety
  * @property {{x: number, y: number}|null} baseScale  Mesh scale as core set it
  * @property {boolean} scaled       Whether a lift scale is currently applied
  */
@@ -50,7 +48,7 @@ const states = new WeakMap();
 function stateOf(token) {
   let state = states.get(token);
   if (!state) {
-    state = { lift: 0, airborne: false, steps: 0, baseScale: null, scaled: false };
+    state = { lift: 0, airborne: false, steps: 0, clock: 0, soundAt: -Infinity, sounds: 0, baseScale: null, scaled: false };
     states.set(token, state);
   }
   return state;
@@ -96,11 +94,14 @@ export function shouldDecorate(token, to, options) {
  */
 export function decorate(token, to, options) {
   const action = options.action ?? token.document.movementAction;
-  const stepping = !GLIDING_ACTIONS.has(action);
+  // No footfalls, no hop: these glide even when the hop style is selected. A
+  // shuttle bouncing across the map is not an improvement.
+  const stepping = !GLIDING_ACTIONS.includes(action);
   const style = stepping ? setting(SETTINGS.animationStyle) : ANIMATION_STYLES.glide;
   const inner = options.ontick;
-  // Whoever it is carrying is redrawn with it; looked up once for the link.
-  const link = { from: null, cells: 1, landed: 0, stepping, riders: ridersOf(token) };
+  // Whoever it is carrying is redrawn with it, and what it sounds like does
+  // not change on the way; both are looked up once for the link.
+  const link = { from: null, start: 0, cells: 1, landed: 0, sound: movementSound(token, action), riders: ridersOf(token) };
   return {
     ...options,
     ontick: (elapsedMS, animation, data) => {
@@ -160,7 +161,11 @@ function tick(token, to, link, style, animation) {
   if (!link.from) {
     link.from = { x: token.position.x, y: token.position.y };
     link.cells = countSpaces(token, link.from, to);
+    link.start = state.clock;
   }
+  // The move's own clock, not the wall's: a frame that comes late delays the
+  // token and its sounds together.
+  state.clock = link.start + Math.min(animation.time, duration);
 
   const progress = Math.min(Math.max(animation.time / duration, 0), 1);
   const phase = progress * link.cells;
@@ -184,8 +189,16 @@ function tick(token, to, link, style, animation) {
   if (landed > link.landed) {
     link.landed = landed;
     state.steps++;
-    if (link.stepping && token.visible) playStep(state.steps, token);
-    Hooks.callAll(HOOKS.step, token, state.steps);
+    // A step sounds on every landing. A stride or a wingbeat is longer than a
+    // space takes to cross, so it sounds on the first landing after the last
+    // one has had its time: in step with the token, at its own pace.
+    let sound = null;
+    if (link.sound && (state.clock - state.soundAt >= link.sound.every)) {
+      state.soundAt = state.clock;
+      sound = soundAt(link.sound, state.sounds++);
+      if (token.visible) playSound(sound);
+    }
+    Hooks.callAll(HOOKS.step, token, state.steps, sound);
   }
 
   // Core flags this itself whenever x or y changed, but a link can end on a
@@ -227,6 +240,9 @@ export function onLinkSettled(token) {
   const state = states.get(token);
   if (!state) return;
   state.airborne = false;
+  // The next move starts its own count, so its first landing always sounds.
+  state.clock = 0;
+  state.soundAt = -Infinity;
   if (state.lift === 0) return;
   state.lift = 0;
   token.renderFlags.set({ refreshPosition: true });
