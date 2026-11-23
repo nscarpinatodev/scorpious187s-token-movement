@@ -126,6 +126,8 @@ The GM has one tool: hold **G** while moving tokens and every player's view pans
 
 With Token Mounting 0.5.0, which drags the rider as its own token, the range shown is still the mount's, but the route is planned for the rider's space.
 
+On video, a rider and then two riders on a horse: [mounted-movement.mp4](docs/media/mounted-movement.mp4).
+
 ## Requirements
 
 - Foundry VTT v14
