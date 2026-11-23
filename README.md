@@ -122,6 +122,16 @@ The GM has one tool: hold **G** while moving tokens and every player's view pans
 
 No libWrapper or socketlib needed.
 
+## Install
+
+In Foundry's setup screen, choose Add-on Modules, then Install Module, and paste this into Manifest URL:
+
+```
+https://github.com/nscarpinatodev/scorpious187s-token-movement/releases/latest/download/module.json
+```
+
+Foundry installs the Module Library with it.
+
 ## Speeds
 
 The range overlay needs to know how fast a token is. Out of the box:
