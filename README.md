@@ -177,7 +177,7 @@ Per world: walk speed (how fast tokens travel, in spaces per second; Foundry's o
 
 ![Settings: walk speed, step sounds and their volume](docs/screenshots/04-settings-animation.jpg)
 
-Per token: Step sound, on the Identity tab of Token Configuration. It says what that token's footsteps sound like when the actor has no armor to read, which is most monsters and NPCs. Eight steps of each set, unarmored through heavy: [armor-steps.mp3](docs/media/armor-steps.mp3). And how size changes them, six steps each at ordinary size, Large, Huge and Gargantuan, first unarmored and then in heavy armor: [size-steps.mp3](docs/media/size-steps.mp3).
+Per token: Step sound, on the Identity tab of Token Configuration. It says what that token's footsteps sound like when the actor has no armor to read, which is most monsters and NPCs. Eight steps of each set, unarmored through heavy: [armor-steps.mp3](docs/media/armor-steps.mp3). And how size changes them, six steps each at ordinary size, Large, Huge and Gargantuan, first unarmored and then in heavy armor: [size-steps.mp3](docs/media/size-steps.mp3). Both on video, with tokens walking in Foundry: [step-sounds.mp4](docs/media/step-sounds.mp4).
 
 ![Token Configuration: Step sound](docs/screenshots/14-token-step-sound.jpg)
 
