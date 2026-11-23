@@ -9,6 +9,12 @@
  *
  * Everything else the ruler does is untouched: the distance labels, when the
  * ruler is shown and to whom, and the routes other users are still planning.
+ *
+ * One thing is put right for every look. Pathfinding marks each turn of a
+ * route with a waypoint (see pathfinding.js), and to a ruler a waypoint is the
+ * end of a leg: the "+10 ft" on a label would count from the last turn, and a
+ * system's markers for spaces passed on the way would skip the turns. Here a
+ * turn is shown to the ruler for what it is, a space on the way.
  * The ruler class is extended the same way the token class is (see
  * token-mixin.js), so a system's ruler stays the base and gets its say first.
  */
@@ -20,6 +26,36 @@ import { routesStyled } from './overlay-render.js';
 import { updateTrail, showTrail, dropTrail } from './trail.js';
 
 const MIXED = Symbol.for(`${MODULE_ID}.ruler`);
+
+/**
+ * Does this waypoint only mark a turn of the route? Nobody set it, the move
+ * cannot be undone back to it, and it is neither end of the route.
+ */
+const isTurn = (waypoint) => !!waypoint && !waypoint.explicit && !waypoint.checkpoint && !waypoint.intermediate
+  && !!waypoint.previous && !!waypoint.next;
+
+/**
+ * Make the "since the last waypoint" part of a label count from the last
+ * waypoint someone set, not from the last turn of the route.
+ * @param {object} waypoint   The ruler waypoint the label is for
+ * @param {object} context    The label's context, as the class below built it
+ */
+function countFromLastSetWaypoint(waypoint, context) {
+  if (context.cost?.delta === undefined) return;
+  let cost = waypoint.cost;
+  let distance = waypoint.measurement?.backward?.distance ?? 0;
+  let turns = 0;
+  for (let prior = waypoint.previous; isTurn(prior) && (prior.stage === waypoint.stage); prior = prior.previous) {
+    cost += prior.cost;
+    distance += prior.measurement?.backward?.distance ?? 0;
+    turns++;
+  }
+  if (!turns) return;
+  context.cost.delta = Number.isFinite(cost) ? cost.toNearest(0.01).signedString() : '∞';
+  if (context.distance?.delta !== undefined) context.distance.delta = distance.toNearest(0.01).signedString();
+  // pf2e adds how much of the leg was extra cost, and works it out the same way.
+  if (typeof context.cost.additional?.delta === 'number') context.cost.additional.delta = Math.max(0, cost - distance);
+}
 
 export function installRulerMixin() {
   const Base = CONFIG.Token.rulerClass;
@@ -55,10 +91,22 @@ export function installRulerMixin() {
       return this.#ours(waypoint) ? { ...style, radius: 0 } : style;
     }
 
-    /** @override */
+    /**
+     * A turn is passed down as a space on the way, which is what a system's
+     * ruler looks for when it marks such spaces (pf2e: where each action ends).
+     * @override
+     */
     _getGridHighlightStyle(waypoint, offset) {
-      const style = super._getGridHighlightStyle(waypoint, offset);
+      const seen = isTurn(waypoint) ? { ...waypoint, intermediate: true } : waypoint;
+      const style = super._getGridHighlightStyle(seen, offset);
       return this.#ours(waypoint) ? { ...style, alpha: 0 } : style;
+    }
+
+    /** @override */
+    _getWaypointLabelContext(waypoint, state) {
+      const context = super._getWaypointLabelContext(waypoint, state);
+      if (context) guarded('route label', () => countFromLastSetWaypoint(waypoint, context));
+      return context;
     }
 
     /** @override */

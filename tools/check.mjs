@@ -193,7 +193,7 @@ check('unknown actor or preset resolves to null', () => {
 
 /* ---------------- 3. Reachability ---------------- */
 
-const { runToEnd, makeStepMetric, boundaryEdges, boundaryLoops, summarisePath, runRoute, turningPoints } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
+const { runToEnd, makeStepMetric, boundaryEdges, boundaryLoops, summarisePath, runRoute, turningPoints, priceCells } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
 
 check('a planned route is summed from its waypoints', () => {
   const at = (i, j, cost) => ({ i, j, cost });
@@ -482,6 +482,56 @@ if (!foundry) {
       assert(Number.isFinite(wall(route.cells[n - 1], route.cells[n])), 'no step crosses the wall');
     }
     assert(turningPoints(route.cells).length >= 2, 'a detour has corners');
+  });
+
+  check('a straight route is priced space by space', () => {
+    const grid = new SquareGrid({ size: 100, distance: 5, diagonals: DIAGONALS.ALTERNATING_1 });
+    const rules = { unit: grid.distance, step: makeStepMetric(grid, DIAGONALS), edge: () => 1 };
+    // Eleven steps, two of them diagonal: 55 ft and 5 more for the second diagonal.
+    const cells = grid.getDirectPath([{ i: 6, j: 12 }, { i: 8, j: 1 }]);
+    const open = priceCells(cells, rules);
+    assert((open.cost === 60) && (open.open === 60) && (open.diagonals === 2), JSON.stringify(open));
+    assert(priceCells(cells, { ...rules, startParity: 1 }).cost === 60, 'one dear diagonal either way');
+    assert(priceCells(cells.slice(0, 4), { ...rules, startParity: 1 }).cost === 20, 'a second diagonal costs double');
+    const rough = (_from, to) => ((to.i === 7) && (to.j === 9) ? 2 : 1);
+    const priced = priceCells(cells, { ...rules, edge: rough });
+    assert((priced.cost === 65) && (priced.open === 60), `difficult space: ${JSON.stringify(priced)}`);
+    const walled = (_from, to) => ((to.i === 7) && (to.j === 9) ? Infinity : 1);
+    assert(priceCells(cells, { ...rules, edge: walled }).cost === Infinity, 'a step that is not allowed');
+    assert(priceCells([cells[0]], rules).cost === 0, 'going nowhere is free');
+  });
+
+  check('a cheaper route is found round a space that costs extra', () => {
+    const grid = new SquareGrid({ size: 100, distance: 5, diagonals: DIAGONALS.ALTERNATING_1 });
+    // A creature two spaces wide, whose spaces cost double to enter.
+    const inside = (cell) => (cell.i >= 7) && (cell.i <= 8) && (cell.j >= 9) && (cell.j <= 10);
+    const edge = (_from, to) => (inside(to) ? 2 : 1);
+    const start = { i: 6, j: 12 };
+    const goal = { i: 8, j: 1 };
+    const rules = { unit: grid.distance, step: makeStepMetric(grid, DIAGONALS), edge };
+    const straight = priceCells(grid.getDirectPath([start, goal]), rules);
+    assert(straight.cost === 65, `the straight route crosses it: ${straight.cost}`);
+    const route = routeOn(grid, start, goal, { edge, maxCost: straight.cost - 0.005 });
+    assert(route && (route.cost === 60), `route ${route?.cost}`);
+    assert(route.cells.every((cell) => !inside(cell)), 'it stays out of the space');
+    assert(route.cells.length === 12, `no more steps than the straight route: ${route.cells.length - 1}`);
+    assert(routeOn(grid, start, goal, { edge, maxCost: 60 - 0.005 }) === null, 'nothing cheaper than the cheapest');
+  });
+
+  check('of routes that cost the same, the shortest and straightest is taken', () => {
+    const grid = new SquareGrid({ size: 100, distance: 5, diagonals: DIAGONALS.ALTERNATING_1 });
+    // Ten across and two down: two diagonals (15 ft) cost the same as a
+    // diagonal and a step down, but the second way is a step longer.
+    const route = routeOn(grid, { i: 0, j: 0 }, { i: 2, j: 10 });
+    assert(route.cost === 55, `cost ${route.cost}`);
+    assert(route.cells.length === 11, `steps ${route.cells.length - 1}`);
+    assert(turningPoints(route.cells).length <= 2, `turns ${turningPoints(route.cells).length}`);
+    // Straight across: no reason to leave the row.
+    const flat = routeOn(grid, { i: 0, j: 0 }, { i: 0, j: 8 });
+    assert(flat.cells.every((cell) => cell.i === 0) && (turningPoints(flat.cells).length === 0), 'a straight run');
+    // Ten across and ten down is one diagonal run.
+    const diagonal = routeOn(grid, { i: 0, j: 0 }, { i: 6, j: 6 });
+    assert((diagonal.cells.length === 7) && (turningPoints(diagonal.cells).length === 0), 'a diagonal run');
   });
 
   check('a route that does not exist is given up on', () => {

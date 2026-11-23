@@ -172,12 +172,26 @@ export function runToEnd(config) {
   }
 }
 
+/** The direction of a step on a square grid: how the offset changes. */
+const offsetDirection = (a, b) => `${b.i - a.i},${b.j - a.j}`;
+
+/** What a step and a turn weigh when choosing between routes of equal cost, in plain steps. */
+const STEP_SLIVER = 1e-4;
+const TURN_SLIVER = 1e-5;
+
 /**
  * Find the cheapest route between two spaces (A*).
  *
  * The same rules as `explore` — the same step prices, the same per-edge
  * multiplier, the same diagonal bookkeeping — but aimed at one destination,
  * so it looks at far fewer spaces. Yields periodically for the same reason.
+ *
+ * Under the alternating diagonal rules many routes cost the same: two
+ * diagonals are 15 ft, and so is a diagonal, a step sideways and a step
+ * back. Of routes that cost the same the one with fewer steps is taken, and
+ * of those the one with fewer turns, so a route does not wander when it has
+ * no reason to. That is done by pricing each step and each turn at a sliver
+ * of a plain step, far too little to outweigh any real difference in cost.
  *
  * @param {object} config
  * @param {{i: number, j: number}} config.start
@@ -192,12 +206,16 @@ export function runToEnd(config) {
  *   A lower bound on the number of plain steps left to the goal. It must
  *   never overestimate, or the route found may not be the cheapest.
  * @param {number} [config.startParity=0]
+ * @param {(from: object, to: object) => string} [config.direction]
+ *   Names the direction of a step, to tell a turn from a straight run. The
+ *   default suits square grids; see `turningPoints`.
  * @returns {Generator<void, {cells: {i: number, j: number}[], cost: number}|null>}
  *   The spaces along the route, start and goal included, or null if there is
  *   no route within the limits.
  */
 export function* findRoute({
   start, goal, unit, maxCost, maxNodes = 6000, neighbors, step, edge, heuristic = () => 0, startParity = 0,
+  direction = offsetDirection,
 }) {
   const goalKey = `${goal.i},${goal.j}`;
   const settled = new Set();
@@ -205,10 +223,15 @@ export function* findRoute({
   const edges = new Map();
   const heap = new Heap();
   const epsilon = unit * 1e-6;
+  const perStep = unit * STEP_SLIVER;
+  const perTurn = unit * TURN_SLIVER;
 
-  // In the heap `cost` is the priority (spent so far plus the least it could
-  // still take); `spent` is the true cost of getting here.
-  heap.push({ i: start.i, j: start.j, parity: startParity, spent: 0, cost: heuristic(start) * unit, parent: null });
+  // In the heap `cost` is the priority (the score so far plus the least it
+  // could still take); `spent` is the true cost of getting here, and `score`
+  // is that plus the slivers that settle ties.
+  heap.push({
+    i: start.i, j: start.j, parity: startParity, spent: 0, score: 0, cost: heuristic(start) * unit, parent: null,
+  });
   best.set(`${start.i},${start.j},${startParity}`, 0);
 
   let sinceYield = 0;
@@ -243,10 +266,15 @@ export function* findRoute({
 
       const spent = node.spent + (units * unit * factor);
       if (spent > maxCost + epsilon) continue;
+      const parent = node.parent;
+      const turned = !!parent && (direction(parent, node) !== direction(node, next));
+      const score = node.score + (units * unit * factor) + perStep + (turned ? perTurn : 0);
       const previous = best.get(nextState);
-      if ((previous !== undefined) && (previous <= spent)) continue;
-      best.set(nextState, spent);
-      heap.push({ i: next.i, j: next.j, parity, spent, cost: spent + (heuristic(next) * unit), parent: node });
+      if ((previous !== undefined) && (previous <= score)) continue;
+      best.set(nextState, score);
+      heap.push({
+        i: next.i, j: next.j, parity, spent, score, cost: score + (heuristic(next) * unit), parent: node,
+      });
     }
 
     if (++sinceYield >= YIELD_EVERY) {
@@ -279,12 +307,45 @@ export function runRoute(config) {
  *   same direction changes offsets differently on odd and even rows.
  * @returns {{i: number, j: number}[]}
  */
-export function turningPoints(cells, direction = (a, b) => `${b.i - a.i},${b.j - a.j}`) {
+export function turningPoints(cells, direction = offsetDirection) {
   const turns = [];
   for (let n = 1; n < cells.length - 1; n++) {
     if (direction(cells[n - 1], cells[n]) !== direction(cells[n], cells[n + 1])) turns.push(cells[n]);
   }
   return turns;
+}
+
+/**
+ * Price a route that is already laid out space by space, by the same rules
+ * the searches use, so it can be compared with a route `findRoute` returns.
+ * @param {{i: number, j: number}[]} cells            Adjacent spaces, start first
+ * @param {object} how
+ * @param {number} how.unit                            Cost of one plain step
+ * @param {(di: number, dj: number, parity: number) => {units: number, parity: number}} how.step
+ * @param {(from: object, to: object) => number} how.edge
+ * @param {number} [how.startParity=0]
+ * @returns {{cost: number, open: number, diagonals: number}} `cost` as it
+ *   stands (Infinity if a step is not allowed), `open` what the same steps
+ *   would cost over open ground, and how many of them are diagonal.
+ */
+export function priceCells(cells, { unit, step, edge, startParity = 0 }) {
+  let cost = 0;
+  let open = 0;
+  let diagonals = 0;
+  let parity = startParity;
+  for (let n = 1; n < cells.length; n++) {
+    const from = cells[n - 1];
+    const to = cells[n];
+    const di = to.i - from.i;
+    const dj = to.j - from.j;
+    if ((di === 0) && (dj === 0)) continue;
+    if ((di !== 0) && (dj !== 0)) diagonals++;
+    const priced = step(di, dj, parity);
+    parity = priced.parity;
+    open += priced.units * unit;
+    cost += priced.units * unit * edge(from, to);
+  }
+  return { cost, open, diagonals };
 }
 
 /**

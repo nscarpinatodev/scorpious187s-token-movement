@@ -88,15 +88,17 @@ The tiles are drawn with this module's own geometry on square and hex grids; not
 
 Foundry has a hook for pathfinding but no pathfinder: left alone, a drag is a straight line that stops at the first wall. This module fills the hook in.
 
-- If the straight route gets where you are dragging, it is used exactly as before. Nothing changes on open ground.
+- If the straight route gets where you are dragging and nothing on it costs extra, it is the route. On open ground the spaces and the cost are what they always were.
 - If it is stopped short, the cheapest route round is searched for and its corners are added to the route as waypoints. The ruler, the cost and the live range all follow.
+- If it gets there but crosses something that costs extra, such as difficult terrain or, in D&D 5e, the space of a creature you can squeeze past, a cheaper route is taken when there is one. So the cost on the ruler is always the cost the range overlay shows for that space. Place a waypoint of your own on the way to go through anyway.
+- The token walks the spaces the route shows. Core draws and prices a leg as the staircase of spaces under it but slides the token along the straight line between its ends; here every turn of the staircase is a waypoint, so the token goes from space to space as drawn.
 - "In the way" means whatever your game system says blocks a step, so in D&D 5e the route goes round enemies as well as walls.
 - A player's route is only bent by walls they have seen, the same rule core applies to its own preview.
 - If there is no way round within reach, you get core's answer: the route stops at the obstacle.
 - The route is worked out on the spot, in about a millisecond once a drag is under way, so the route and the range keep up with the pointer as it crosses each space. Nothing waits on a search.
 - Waypoints you place yourself are kept; each leg between them is routed on its own.
 
-It can be switched off per user with **Find a way round**, which you will want if another module does your pathfinding. If such a module is already answering, this one stands aside.
+The search can be switched off per user with **Find a way round**, which you will want if another module does your pathfinding. If such a module is already answering, this one stands aside. Switched off, routes are core's straight ones, still walked space by space.
 
 ![The route bending round the end of a wall, 55 ft in all](docs/screenshots/09-pathfinding.jpg)
 

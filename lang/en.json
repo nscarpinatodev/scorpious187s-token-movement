@@ -105,7 +105,7 @@
       },
       "pathfinding": {
         "Name": "Find a way round",
-        "Hint": "When the straight route to where you are dragging is blocked, plan the cheapest route round instead of stopping at the obstacle. Turn this off if another module does your pathfinding."
+        "Hint": "When the straight route to where you are dragging is blocked, plan the cheapest route round instead of stopping at the obstacle; and when it crosses something that costs extra movement, take a cheaper route if there is one. Turn this off if another module does your pathfinding."
       },
       "overlayStyle": {
         "Name": "Range style",
