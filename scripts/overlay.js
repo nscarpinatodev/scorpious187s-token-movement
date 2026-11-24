@@ -10,18 +10,22 @@
  * anything a module layers on top are all honoured without this module
  * knowing about any of them.
  *
- * During a drag the overlay follows the route core is planning. When a drag
- * starts it shows everything the token could reach. As the route grows it is
- * redrawn from the route's end with whatever movement the route leaves, and
- * the spaces that were reachable at the start but no longer are get dimmed —
- * so the price of the chosen route is visible before the token is dropped.
+ * During a drag the overlay answers one question: where could the pointer be
+ * taken next, and at what price? Core routes the last leg of a drag afresh
+ * every time the pointer moves, from the last waypoint the user has dropped
+ * (or from the start, with none). So that is where the range is measured
+ * from, with whatever the route up to that waypoint leaves. A plain drag
+ * therefore shows the same range from pick-up to drop — dragging back towards
+ * the start is still a short move, and is coloured as one — and the range only
+ * moves on, dimming the spaces that have gone out of reach, when a waypoint
+ * fixes part of the route.
  */
 
 import { SETTINGS } from './constants.js';
 import { setting } from './settings.js';
 import { guarded, log } from './logger.js';
 import { getMovementRanges, diagonalsThisTurn, bandColors, routeBands } from './speed.js';
-import { explore, summarisePath } from './reachability.js';
+import { explore, summarisePath, fixedIndex, samePlace } from './reachability.js';
 import { bandAt } from './shapes.js';
 import { makeNavigator } from './navigation.js';
 import { paintRange, clearRange, forgetRange, overlayStyle, routesStyled } from './overlay-render.js';
@@ -38,30 +42,45 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 const keyOf = (offset) => `${offset.i},${offset.j}`;
 
 /**
- * @typedef {object} LivePlan   Where a drag's planned route has got to.
- * @property {{x: number, y: number}} from  The route's last reachable position
- * @property {string} action                Movement action at that point
- * @property {number} spent                 Cost of the route so far, scene units
- * @property {number} diagonals             Diagonal steps the route takes
+ * @typedef {object} LivePlan   The part of a drag's route that is fixed.
+ * @property {{x: number, y: number}} from  The last waypoint the user dropped
+ * @property {string} action                Movement action the drag goes on with
+ * @property {number} spent                 Cost of the route up to there, scene units
+ * @property {number} diagonals             Diagonal steps the route takes up to there
  */
 
 /**
- * Read the route core is planning for this user's drag of a token.
+ * The waypoints this user has dropped during the drag of a token, in order:
+ * the fixed part of the route, without the pointer's own position.
+ * @returns {object[]|null}  null when core's drag data is not where it is expected
+ */
+function droppedWaypoints(token) {
+  const contexts = token.layer?._draggedToken?.mouseInteractionManager?.interactionData?.contexts;
+  const waypoints = contexts?.[token.document.id]?.waypoints;
+  return Array.isArray(waypoints) ? waypoints : null;
+}
+
+/**
+ * Read the fixed part of the route core is planning for this user's drag.
  * @param {Token} token
  * @returns {LivePlan|null}
- *   null when there is no route yet (still on the starting space).
+ *   null when nothing is fixed yet: no waypoint has been dropped, so the range
+ *   is still the one from where the token stands.
  *
  * While a pathfinder is still searching, core keeps the part of the route it
- * is sure of — up to the last waypoint already reached, often just the start
- * — and that is what is read here. So the overlay never stops: it shows the
- * range from as far as the route is known, which at worst is the full range
- * from the start, and moves on the moment the search reports back.
+ * is sure of — up to the last waypoint already reached — and that is what is
+ * read here, so the overlay never stops to wait for a search.
  */
 function readLivePlan(token) {
   const planned = token._plannedMovement?.[game.user.id];
   if (!planned) return null;
   const path = planned.foundPath ?? [];
   if (path.length < 2) return null;
+
+  const arrived = !planned.unreachableWaypoints?.length;
+  const dropped = droppedWaypoints(token);
+  const index = fixedIndex(path, dropped, arrived);
+  if (index === 0) return null;
 
   // Core has already priced every step of the route, continuing from this
   // turn's movement history, so its numbers are used as they are.
@@ -75,14 +94,18 @@ function readLivePlan(token) {
     const config = CONFIG.Token.movement.actions[waypoint.action];
     return !config?.teleport && (config?.measure !== false);
   };
-  const { cost, diagonals } = summarisePath(path, { toOffset, measured, square: grid.isSquare });
+  const { cost, diagonals } = summarisePath(path.slice(0, index + 1), { toOffset, measured, square: grid.isSquare });
 
-  const end = path.at(-1);
-  const source = document._source;
-  const atStart = (Math.round(end.x) === Math.round(source.x)) && (Math.round(end.y) === Math.round(source.y));
-  if (atStart && (cost === 0)) return null;
+  // A waypoint dropped back on the start, having gone nowhere, fixes nothing.
+  // Where the waypoint is, is asked of the waypoint itself when it can be:
+  // the path's own copy may be the one core stopped a pixel short.
+  const reached = path[index];
+  const at = dropped?.findLast((waypoint) => samePlace(waypoint, reached)) ?? reached;
+  if ((cost === 0) && samePlace(at, path[0])) return null;
 
-  return { from: { x: end.x, y: end.y }, action: end.action, spent: cost, diagonals };
+  // The leg still to come is made in whatever action the drag is in now.
+  const action = token._getDragMovementAction?.() ?? reached.action;
+  return { from: { x: at.x, y: at.y }, action, spent: cost, diagonals };
 }
 
 /**
@@ -166,8 +189,8 @@ function readRoute(token, footprint) {
  * Gather everything the search needs for one token, or null if there is
  * nothing to draw (gridless scene, unknown speed, teleporting…).
  * @param {Token} token
- * @param {LivePlan|null} [live]  Start from the end of a planned route
- *   instead of from where the token stands.
+ * @param {LivePlan|null} [live]  Start from the last waypoint dropped on a
+ *   planned route instead of from where the token stands.
  */
 function buildPlan(token, live = null) {
   if (!canvas.ready) return null;
@@ -190,8 +213,8 @@ function buildPlan(token, live = null) {
     ranges = ranges.map((range) => ({ ...range, distance: Math.min(range.distance, cap) }));
   }
 
-  // What the planned route has used is no longer available. Each band keeps
-  // its own colour as it shrinks; a band the route has used up drops out.
+  // What the fixed part of the route has used is no longer available. Each band
+  // keeps its own colour as it shrinks; a band that is used up drops out.
   if (live) {
     ranges = ranges
       .map((range) => ({ ...range, distance: range.distance - live.spent }))
@@ -199,7 +222,7 @@ function buildPlan(token, live = null) {
   }
   const maxCost = ranges.at(-1)?.distance ?? 0;
 
-  // Laid out from where the token stands, or from the end of the planned route.
+  // Laid out from where the token stands, or from the last waypoint dropped.
   const navigator = makeNavigator(token, { action, from: live?.from ?? null });
   const { anchor, start, startCenter, deltaOf } = navigator;
 
@@ -220,6 +243,7 @@ function buildPlan(token, live = null) {
 
   return {
     grid,
+    action,
     ranges,
     accent,
     footprint,
@@ -294,6 +318,9 @@ class RangeOverlay {
   /** What the dragged token could reach when the drag began. */
   #baseline = null;
 
+  /** What that search was a search for: the movement action and its bands. */
+  #baselineKey = null;
+
   /** The dragged token's footprint, for laying out the route. */
   #footprint = null;
 
@@ -359,6 +386,15 @@ class RangeOverlay {
     if (signature === this.#signature) return;
     this.#signature = signature;
     this.#show(token, live);
+  }
+
+  /**
+   * A waypoint was dropped or taken back during the drag. The route may be
+   * just as it was, in which case core reports nothing, but how much of it
+   * is fixed is not.
+   */
+  onWaypointsChanged() {
+    if (this.#dragged) this.onPlanChanged(this.#dragged);
   }
 
   /** Pin the range of `token`, or unpin if it is already pinned (or null). */
@@ -497,6 +533,14 @@ class RangeOverlay {
           else this.clear();
           return;
         }
+        // In a plain drag only the route changes from one pointer step to
+        // the next, not the range under it. What was found at pick-up is
+        // used again for as long as it answers the same question.
+        const key = [plan.action, ...plan.ranges.map((range) => `${range.distance}:${range.color}`)].join('|');
+        if (!live && before && (key === this.#baselineKey)) {
+          this.#paint(plan, before, null, route);
+          return;
+        }
         // Usually done well inside one frame. A very fast token on a busy map
         // is spread across several instead of freezing the drag, and the
         // nearer bands are painted as soon as they are known.
@@ -504,7 +548,10 @@ class RangeOverlay {
           live ? null : (partial) => this.#paint(plan, collectCells(plan, partial), null, route));
         if (!reached || !canvas.ready) return;
         const cells = collectCells(plan, reached);
-        if (dragging) this.#baseline = before = cells;
+        if (dragging) {
+          this.#baseline = before = cells;
+          this.#baselineKey = key;
+        }
         if (!live) {
           this.#paint(plan, cells, null, route);
           log.debug(`range: ${reached.size} spaces in ${(performance.now() - started).toFixed(1)} ms`);
@@ -512,9 +559,9 @@ class RangeOverlay {
         }
       }
 
-      // The range from the end of the planned route, with what the route
-      // leaves. No partial painting here: a half-finished search would show
-      // spaces as lost that are merely not reached yet.
+      // The range from the last waypoint dropped, with what the route up to
+      // it leaves. No partial painting here: a half-finished search would
+      // show spaces as lost that are merely not reached yet.
       const plan = buildPlan(token, live);
       if (!plan) {
         if (route) this.#paint(null, new Map(), null, route);

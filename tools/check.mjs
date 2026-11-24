@@ -378,7 +378,46 @@ check('unknown actor or preset resolves to null', () => {
 
 /* ---------------- 3. Reachability ---------------- */
 
-const { runToEnd, makeStepMetric, boundaryEdges, boundaryLoops, summarisePath, runRoute, turningPoints, priceCells } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
+const { runToEnd, makeStepMetric, boundaryEdges, boundaryLoops, summarisePath, runRoute, turningPoints, priceCells, fixedIndex } = await import(pathToFileURL(join(root, 'scripts/reachability.js')));
+
+check('only the waypoints a user has dropped fix a route', () => {
+  // As core lays a found path out: the start, the spaces between, and the
+  // waypoints the user asked for marked as explicit checkpoints.
+  const at = (x, y, marks = {}) => ({ x, y, elevation: 0, explicit: false, checkpoint: false, intermediate: false, ...marks });
+  const asked = { explicit: true, checkpoint: true };
+  const between = { intermediate: true };
+  const start = at(0, 0, { checkpoint: true });
+  // A plain drag, six spaces out: nothing is fixed, however far it goes.
+  const plain = [start, at(100, 0, between), at(200, 0, between), at(300, 0, asked)];
+  assert(fixedIndex(plain, [], true) === 0, 'a plain drag fixes nothing');
+  assert(fixedIndex(plain, null, true) === 0, 'nor when the drag data cannot be read');
+  // Out to a waypoint, then on: the waypoint is fixed, the pointer is not.
+  const bent = [start, at(100, 0, between), at(200, 0, asked), at(200, 100, between), at(200, 200, asked)];
+  assert(fixedIndex(bent, [{ x: 200, y: 0, elevation: 0 }], true) === 2, 'the dropped waypoint');
+  assert(fixedIndex(bent, null, true) === 2, 'the same, read from the marks');
+  // The pointer still on the waypoint just dropped: it is fixed already.
+  const justDropped = bent.slice(0, 3);
+  assert(fixedIndex(justDropped, [{ x: 200, y: 0, elevation: 0 }], true) === 2, 'fixed as soon as it is dropped');
+  // Two waypoints, the second of them out of reach: the route stops at the first.
+  const short = bent.slice(0, 3);
+  assert(fixedIndex(short, [{ x: 200, y: 0 }, { x: 900, y: 900 }], false) === 2, 'as far as the route gets');
+  assert(fixedIndex(short, null, false) === 2, 'the same, read from the marks');
+  // The pointer taken where no route goes: core stops the route a pixel short of the waypoint.
+  const stopped = [start, at(100, 0, between), at(201, 0, asked)];
+  assert(fixedIndex(stopped, [{ x: 200, y: 0, elevation: 0 }], false) === 2, 'a route stopped a pixel short');
+  assert(fixedIndex(stopped, null, false) === 2, 'the same, read from the marks');
+  // A waypoint on the start, or one repeated, is no waypoint at all.
+  assert(fixedIndex(plain, [{ x: 0, y: 0 }], true) === 0, 'a waypoint on the start');
+  assert(fixedIndex(bent, [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 0 }], true) === 2, 'repeats are skipped');
+  // Out, and back through the start: the second visit is the one that counts.
+  const loop = [start, at(100, 0, asked), at(0, 0, asked), at(0, 100, asked)];
+  assert(fixedIndex(loop, [{ x: 100, y: 0 }, { x: 0, y: 0 }], true) === 2, 'back through the start');
+  // A space that terrain marks on the way is not something the user dropped.
+  const terrain = [start, at(100, 0, { explicit: true, intermediate: true }), at(200, 0, asked)];
+  assert(fixedIndex(terrain, null, true) === 0, 'terrain marks fix nothing');
+  // The same spot at another height is another place.
+  assert(fixedIndex(bent, [{ x: 200, y: 0, elevation: 10 }], true) === 0, 'elevation is part of the place');
+});
 
 check('a planned route is summed from its waypoints', () => {
   const at = (i, j, cost) => ({ i, j, cost });

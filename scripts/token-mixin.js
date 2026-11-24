@@ -91,6 +91,23 @@ export function installTokenMixin() {
       guarded('range overlay', () => rangeOverlay.onPlanChanged(this));
     }
 
+    /**
+     * Core only refreshes the ruler when the route itself changes, and a
+     * waypoint dropped where the pointer already is changes nothing about
+     * the route. It does change what part of it is fixed.
+     * @override
+     */
+    _addDragWaypoint(point, options) {
+      super._addDragWaypoint(point, options);
+      guarded('range overlay', () => rangeOverlay.onWaypointsChanged());
+    }
+
+    /** @override */
+    _removeDragWaypoint() {
+      super._removeDragWaypoint();
+      guarded('range overlay', () => rangeOverlay.onWaypointsChanged());
+    }
+
     /** @override */
     _initializeDragLeft(event) {
       super._initializeDragLeft(event);

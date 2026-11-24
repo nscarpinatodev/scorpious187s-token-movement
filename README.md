@@ -47,17 +47,19 @@ It also reads Foundry's settings rather than assuming them. The diagonal rule is
 
 ## While you drag
 
-When a drag starts, the overlay shows everything the token could reach. As you draw a route it follows along:
+When a drag starts, the overlay shows everything the token could reach, and for a plain drag that is what it goes on showing until you let go. Wherever the pointer goes, Foundry plans the route there afresh from the start, so a space's colour always says what it costs to drag the token to it: back towards the start is a short move again, and is coloured as one.
 
-- It re-centres on the end of the route and shows what the movement you have left can still reach, in the same band colours. A band the route has used up drops out.
-- Spaces that were reachable when the drag began but are not any more are dimmed, so you can see what this route costs you before you let go.
-- Drag back to where you started and the full range returns. Drop or cancel and it clears.
+Dropping a waypoint fixes the route up to it, and the overlay follows:
+
+- It re-centres on the waypoint and shows what the movement left after it can still reach, in the same band colours. A band the route has used up drops out.
+- Spaces that were reachable when the drag began but are not any more are dimmed, so you can see what the route so far has cost.
+- Take the waypoint back and the range before it returns. Drop or cancel and it clears.
 
 The route's cost is core's own figure, the same one on the ruler label, so the two always agree: waypoints, difficult terrain, the diagonal rule and movement already used this turn are all in it.
 
-![A 20 ft route under Alternating 1/2/1: the bright area is what the remaining movement reaches from the route's end, the dark area is what the route has put out of reach](docs/screenshots/08-live-route.jpg)
+![A waypoint dropped 15 ft along a route, and the route going on from it: the brightest tiles are what is left of the move from the waypoint, the fainter ones need the dash, and the dark ones in the corners are what the route so far has put out of reach](docs/screenshots/08-live-route.jpg)
 
-On video: [the range following a drag](docs/media/live-drag.mp4).
+On video: [the range through a plain drag, then a waypoint](docs/media/live-drag.mp4).
 
 ## The look
 

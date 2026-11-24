@@ -381,6 +381,52 @@ export function summarisePath(path, { toOffset, measured = () => true, square = 
 }
 
 /**
+ * Are two waypoints the same place? Only what a dropped waypoint is sure to
+ * carry is compared, and a pixel either way is let pass: a route that cannot
+ * get to where the pointer is gets stopped by core a pixel short of the last
+ * waypoint it reached.
+ */
+export function samePlace(a, b) {
+  if ((Math.abs(a.x - b.x) > 1.5) || (Math.abs(a.y - b.y) > 1.5)) return false;
+  if (Math.abs((a.elevation ?? 0) - (b.elevation ?? 0)) > 1e-6) return false;
+  return (a.level == null) || (b.level == null) || (a.level === b.level);
+}
+
+/**
+ * How far along a planned route the fixed part goes: the index, in the found
+ * path, of the last waypoint the user dropped that the route gets to. 0 when
+ * nothing is fixed and the whole route is still the pointer's to change.
+ * @param {object[]} path         The found path
+ * @param {object[]|null} dropped The dropped waypoints, if core's drag data could be read
+ * @param {boolean} arrived       Does the found path get all the way to the pointer?
+ */
+export function fixedIndex(path, dropped, arrived) {
+  let index = 0;
+  if (dropped) {
+    // Core drops a waypoint that repeats the one before it, so the same is done here.
+    let previous = path[0];
+    let n = 1;
+    for (const waypoint of dropped) {
+      if (samePlace(waypoint, previous)) continue;
+      while ((n < path.length) && !samePlace(path[n], waypoint)) n++;
+      if (n >= path.length) break;
+      index = n;
+      previous = waypoint;
+    }
+    return index;
+  }
+  // Without the drag data, go by how core marks the path: dropped waypoints
+  // and the pointer's are the ones marked as both explicit and a checkpoint.
+  const marked = [];
+  for (let n = 1; n < path.length; n++) {
+    const waypoint = path[n];
+    if (waypoint.explicit && waypoint.checkpoint && !waypoint.intermediate) marked.push(n);
+  }
+  if (arrived) marked.pop();
+  return marked.at(-1) ?? 0;
+}
+
+/**
  * Find the edges on the outside of a set of polygons that tile the plane.
  * An edge shared by two polygons in the set is interior; one that appears
  * once is boundary. Works for squares and hexes alike.
