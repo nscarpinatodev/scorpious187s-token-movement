@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2 (unreleased)
+## 0.1.2
 
 - The range no longer changes colour under a token that is dragged back towards where it started. It was being measured again from wherever the pointer was, as though the route so far were already spent, so after dragging out a full move the spaces back towards the start were painted as a dash although dragging there is a short move. It is now measured from the last waypoint dropped, or from the start when there is none: a plain drag shows the same range from pick-up to drop, and the range moves on and dims what is out of reach only when a waypoint fixes part of the route.
 - A plain drag no longer searches the range again on every space the pointer crosses.
