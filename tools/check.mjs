@@ -892,6 +892,108 @@ if (!foundry) {
   });
 }
 
+/* ---------------- 4. Teleport ---------------- */
+
+const { planLandings } = await import(pathToFileURL(join(root, 'scripts/teleport.js')));
+
+{
+  // A square grid of 100 px spaces: a token's corner snaps to a grid line, or
+  // for a token half a space across, to half a space.
+  const box = (id, x, y, spaces = 1) => ({ id, x, y, width: spaces * 100, height: spaces * 100 });
+  const snap = (b, p) => { const unit = b.width < 100 ? 50 : 100; return { x: Math.round(p.x / unit) * unit, y: Math.round(p.y / unit) * unit }; };
+  const step = { x: 100, y: 100 };
+  const canvasSize = { width: 4000, height: 3000 };
+  const clamp = (b, p) => ({
+    x: Math.min(Math.max(p.x, 0), canvasSize.width - b.width),
+    y: Math.min(Math.max(p.y, 0), canvasSize.height - b.height),
+  });
+  const at = (landings, id) => `${landings.get(id).x},${landings.get(id).y}`;
+  const apart = (boxes, landings) => boxes.every((a, i) => boxes.every((b, j) => (j <= i) || !(
+    (Math.min(landings.get(a.id).x + a.width, landings.get(b.id).x + b.width) - Math.max(landings.get(a.id).x, landings.get(b.id).x) > 1)
+    && (Math.min(landings.get(a.id).y + a.height, landings.get(b.id).y + b.height) - Math.max(landings.get(a.id).y, landings.get(b.id).y) > 1))));
+
+  check('a teleported token lands on the space the pointer is in', () => {
+    // Out in the padding and off the grid, as a token is while it is made ready.
+    const one = [box('a', -437, 212)];
+    assert(at(planLandings(one, { x: 1234, y: 987 }, { snap, step, clamp }), 'a') === '1200,900', 'the space under the pointer');
+    assert(at(planLandings(one, { x: 1200, y: 900 }, { snap, step, clamp }), 'a') === '1200,900', 'a pointer on the corner of four spaces picks one of them');
+    assert(at(planLandings(one, { x: 1234, y: 987 }, { clamp }), 'a') === '1184,937', 'without snapping, centred on the pointer');
+    assert(at(planLandings([box('big', 0, 0, 2)], { x: 1234, y: 987 }, { snap, step, clamp }), 'big') === '1100,900', 'a 2 by 2 token is centred on the nearest corner');
+    assert(planLandings([], { x: 0, y: 0 }, { snap, step, clamp }).size === 0, 'nothing in, nothing out');
+  });
+
+  check('a teleported group keeps its formation', () => {
+    // A wedge with a Large token behind it, standing on the grid.
+    const group = [box('a', 300, 200), box('b', 200, 300), box('c', 400, 300), box('d', 300, 400, 2), box('e', 100, 400)];
+    for (const target of [{ x: 2050, y: 1550 }, { x: 2099, y: 1501 }, { x: 813, y: 2222 }, { x: 60, y: 60 }]) {
+      const landings = planLandings(group, target, { snap, step, clamp });
+      const moved = { x: landings.get('a').x - 300, y: landings.get('a').y - 200 };
+      for (const b of group) {
+        assert((landings.get(b.id).x - b.x === moved.x) && (landings.get(b.id).y - b.y === moved.y), `${b.id} moved with the rest to ${JSON.stringify(target)}`);
+        assert((landings.get(b.id).x % 100 === 0) && (landings.get(b.id).y % 100 === 0), `${b.id} is on the grid`);
+      }
+    }
+    // The middle of the group goes to the pointer, to within a space.
+    const landings = planLandings(group, { x: 2050, y: 1550 }, { snap, step, clamp });
+    const middle = group.reduce((sum, b) => ({ x: sum.x + ((landings.get(b.id).x + (b.width / 2)) / group.length), y: sum.y + ((landings.get(b.id).y + (b.height / 2)) / group.length) }), { x: 0, y: 0 });
+    assert((Math.abs(middle.x - 2050) <= 50) && (Math.abs(middle.y - 1550) <= 50), `the middle landed at ${middle.x},${middle.y}`);
+    // The order the tokens are given in changes nothing.
+    const reversed = planLandings([...group].reverse(), { x: 2050, y: 1550 }, { snap, step, clamp });
+    for (const b of group) assert(at(reversed, b.id) === at(landings, b.id), `${b.id} lands the same whatever the order`);
+  });
+
+  check('a group put down off the grid keeps its formation to the pixel', () => {
+    const group = [box('a', 310, 207), box('b', 455, 290), box('c', 120, 333)];
+    const landings = planLandings(group, { x: 1500, y: 1500 }, { clamp });
+    const moved = { x: landings.get('a').x - 310, y: landings.get('a').y - 207 };
+    for (const b of group) assert((landings.get(b.id).x - b.x === moved.x) && (landings.get(b.id).y - b.y === moved.y), `${b.id} moved with the rest`);
+  });
+
+  check('teleported tokens that stood apart land on spaces of their own', () => {
+    // Loose in the padding, a Tiny token right beside a Medium one: they snap
+    // to different lines and, snapped one by one, come down on the same space.
+    const loose = [box('m', -327, 88), { id: 't', x: -376, y: 102, width: 50, height: 50 }, box('n', -474, 160)];
+    assert(apart(loose, new Map(loose.map((b) => [b.id, b]))), 'they stand apart to begin with');
+    assert(!apart(loose, planLandings(loose, { x: 1650, y: 1250 }, { snap, clamp })), 'snapping alone puts two on one space');
+    const landings = planLandings(loose, { x: 1650, y: 1250 }, { snap, step, clamp });
+    assert(apart(loose, landings), `nothing shares a space: ${loose.map((b) => at(landings, b.id)).join(' ')}`);
+    for (const b of loose) {
+      const unit = b.width < 100 ? 50 : 100;
+      assert((landings.get(b.id).x % unit === 0) && (landings.get(b.id).y % unit === 0), `${b.id} is on the grid`);
+    }
+    // A rider on its mount overlapped where it stood, and still does.
+    const riding = [box('mount', 400, 400, 2), box('rider', 450, 450)];
+    const ridden = planLandings(riding, { x: 2000, y: 2000 }, { snap, step, clamp });
+    assert((ridden.get('rider').x - ridden.get('mount').x === 50) || (ridden.get('rider').x - ridden.get('mount').x === 100) || (ridden.get('rider').x === ridden.get('mount').x),
+      'the rider is still on the mount');
+    assert(!apart(riding, ridden), 'a stack is left a stack');
+  });
+
+  check('a group teleported to the edge is slid back onto the canvas whole', () => {
+    const row = [box('a', 500, 500), box('b', 600, 500), box('c', 700, 500), box('d', 800, 500)];
+    const landings = planLandings(row, { x: 3990, y: 2990 }, { snap, step, clamp });
+    assert(apart(row, landings), `nothing shares a space: ${row.map((b) => at(landings, b.id)).join(' ')}`);
+    for (const b of row) {
+      assert(landings.get(b.id).x - landings.get('a').x === b.x - 500, `${b.id} kept its place in the row`);
+      assert((landings.get(b.id).x + b.width <= canvasSize.width) && (landings.get(b.id).y + b.height <= canvasSize.height), `${b.id} is wholly on the canvas`);
+      assert((landings.get(b.id).x % 100 === 0) && (landings.get(b.id).y % 100 === 0), `${b.id} is on the grid`);
+    }
+    const corner = planLandings(row, { x: -500, y: -500 }, { snap, step, clamp });
+    assert(at(corner, 'a') === '0,0', `the row starts in the corner: ${at(corner, 'a')}`);
+    // A selection spread right across the map, with a Large token in it, sent
+    // past the far corner: the token furthest out stops at the edge and the
+    // rest keep their places behind it.
+    const spread = [box('far', 1300, 700), box('a', 100, 500), box('b', 300, 500), box('c', 200, 600), box('big', 100, 800, 2)];
+    const sent = planLandings(spread, { x: canvasSize.width + 500, y: canvasSize.height + 500 }, { snap, step, clamp });
+    const moved = { x: sent.get('far').x - 1300, y: sent.get('far').y - 700 };
+    for (const b of spread) {
+      assert((sent.get(b.id).x - b.x === moved.x) && (sent.get(b.id).y - b.y === moved.y), `${b.id} moved with the rest: ${at(sent, b.id)}`);
+      assert((sent.get(b.id).x >= 0) && (sent.get(b.id).y >= 0) && (sent.get(b.id).x + b.width <= canvasSize.width) && (sent.get(b.id).y + b.height <= canvasSize.height), `${b.id} is wholly on the canvas`);
+    }
+    assert((sent.get('far').x === canvasSize.width - 100) && (sent.get('big').y === canvasSize.height - 200), 'the group is hard against the corner');
+  });
+}
+
 /* ---------------- Report ---------------- */
 
 if (failures.length) {

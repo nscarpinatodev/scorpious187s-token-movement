@@ -16,6 +16,7 @@ import { hasWings } from './creatures.js';
 import { registerTokenConfig } from './token-config.js';
 import { SYSTEM_PRESETS } from './systems.js';
 import { registerFollow } from './follow.js';
+import { registerTeleport, teleportTokens } from './teleport.js';
 import { forgetRoutes } from './pathfinding.js';
 import { HUD_ATTRIBUTES } from './theme.js';
 import { guarded, log } from './logger.js';
@@ -40,6 +41,7 @@ Hooks.once('init', () => {
   });
 
   registerFollow();
+  registerTeleport();
   registerTokenConfig();
   onSoundSettingChange(() => { if (game.ready) preloadStepSounds(); });
 
@@ -74,6 +76,12 @@ Hooks.once('init', () => {
     trailSnapshot: (token) => trailSnapshot(token),
     /** Pin (or with no argument, unpin) a token's range. */
     pinRange: (token) => rangeOverlay.togglePin(token ?? null),
+    /**
+     * GM only. Put tokens down at a point without moving them there: the middle
+     * of the group goes to the point and each token keeps its place round it.
+     * Resolves to the token documents that were moved.
+     */
+    teleportTokens: (tokens, point, options) => teleportTokens(tokens, point, options),
   });
 
   log.info('Initialized');

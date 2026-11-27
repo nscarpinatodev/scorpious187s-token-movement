@@ -9,6 +9,7 @@ Makes moving a token feel like moving a miniature, on any game system, for Found
 - **A way round.** When the straight route is blocked, the cheapest route round is planned for you.
 - **System-agnostic.** Speeds are read from a data path on the actor. Presets cover common systems; one setting covers the rest.
 - **Your camera stays yours.** Nobody's movement moves anybody else's view. The one exception is a GM-only key the GM holds on purpose.
+- **Teleport, for the GM.** One key puts the selected tokens down where the pointer is: no drag, no route, no walls in the way. A group keeps its formation.
 - **Colours that suit the game.** With [Scorpious187's HUD UI](https://github.com/nscarpinatodev/scorpious187s-scifi-character-hud) active, the range takes its colour from the device you wear: one colour, bold nearest the token and darker and fainter with each band further out. Pathfinder and Starfinder 2e get green, yellow and red for the first, second and third Stride.
 
 ![Dragging a token round an enemy: reachable spaces as tiles, the route as a lit strip with a ring on each step](docs/screenshots/10-tiles-style.jpg)
@@ -118,6 +119,23 @@ The GM has one tool: hold **G** while moving tokens and every player's view pans
 - Hidden tokens are never followed, so the GM can hold the key through a mixed move without revealing anything.
 - The GM's own view is not moved.
 
+## Teleport
+
+For setting a scene. Make a token ready where the players are not looking, out in the padding round the map: hide it, or whatever else it needs. Then select it, point at the space it belongs on and press **J**. It is there.
+
+![Six tokens selected in the padding, one of them hidden; then the same six in the map, in the same formation round the pointer](docs/screenshots/15-teleport.jpg)
+
+- **GM only.** The key is GM-only in Foundry's Controls and cannot be bound or triggered by a player, and the API call does nothing for one.
+- **Nothing is walked.** No route, no ruler, no trail, no hop and no footsteps. Walls and terrain are not in the way and no movement is spent, in combat or out. It is core's own displace action, the one behind undo and cut and paste.
+- **A group lands as a group.** Select several tokens and the middle of the selection goes to the pointer. Every token keeps its place round it, on a space of its own, whatever the sizes, on square and hex grids.
+- **On the grid**, unless you hold **Shift**: then the selection is centred on the pointer to the pixel. On a gridless scene it always is.
+- **Ctrl+Z** takes it back.
+- **Kept on the canvas.** A group put down at the edge is slid back on whole, not squeezed.
+- **Hidden stays hidden, and locked stays put.** Nobody's view moves either. To bring the players along, hold **G** as you press it, as with any other move.
+- **With Token Mounting**, teleporting a rider teleports its mount, and the mount takes everyone on it.
+
+The pointer has to be over the map. Over a sidebar or a window the key says so and moves nothing.
+
 ## With Token Mounting
 
 [Scorpious187's Token Mounting](https://github.com/nscarpinatodev/scorpious187s-token-mounting) puts tokens on other tokens. When it is active (0.6.0 or later for all of this):
@@ -172,8 +190,9 @@ In combat, the range shrinks by what the token has already moved this turn, usin
 - **Drag a token** to see its range. It clears when you drop or cancel.
 - **M** (rebindable) pins or unpins the range of the selected token without dragging. A pinned range follows the token and redraws when walls, turns or settings change.
 - **G** (GM only, hold, rebindable) brings every player's view along with the tokens you move.
+- **J** (GM only, rebindable) teleports the selected tokens to the pointer. With **Shift**, off the grid.
 
-![The two keybindings; the second is marked Gamemaster Only](docs/screenshots/07-keybindings.jpg)
+![The three keybindings; the second and third are marked Gamemaster Only](docs/screenshots/07-keybindings.jpg)
 
 ## Colours
 
@@ -253,6 +272,7 @@ api.pinRange(token);                  // or api.pinRange() to unpin
 api.refreshRange();
 api.rangeSnapshot();                  // what the overlay shows now, as plain data; null if nothing
 api.trailSnapshot(token);             // the trail drawn for a token: steps, how many walked; null if none
+await api.teleportTokens(tokens, { x, y });  // GM only: put tokens down round a point; add { snap: false } to land off the grid
 ```
 
 Flying, swimming, burrowing and driving glide rather than hop and make no footsteps; flying is where wings are heard. Teleports and unmeasured movement (a rider carried by its mount, a displacement) get no arc and no footsteps of their own, and a movement action marked as not visualized leaves no trail.

@@ -153,9 +153,15 @@
       "followMe": {
         "Name": "Bring players' view along (hold)",
         "Hint": "GM only. Hold while moving tokens and every player's view pans to follow that move. Players' own movement never moves anyone else's view."
+      },
+      "teleport": {
+        "Name": "Teleport selected tokens",
+        "Hint": "GM only. Puts the selected tokens down where the pointer is, with no drag: no route, no movement spent, walls ignored. A group keeps its formation, with its middle at the pointer. Hold Shift to land off the grid. Ctrl+Z takes it back."
       }
     },
     "Notify": {
+      "TeleportOffMap": "Point at the map where the tokens should land, then press the teleport key.",
+      "TeleportLocked": "The selected tokens are locked, so they were not teleported.",
       "NoSpeed": "Token Movement could not find a speed for this token, so no range is drawn. Set a speed data path or a fallback speed in the module settings.",
       "Clipped": "This token's range is larger than the configured maximum and has been clipped."
     }
