@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0
 
 Teleport, for the GM.
 
@@ -9,6 +9,7 @@ Teleport, for the GM.
 - Hold Shift to land off the grid. Ctrl+Z takes a teleport back. Locked tokens stay where they are. With Token Mounting, teleporting a rider teleports its mount and everyone on it.
 - Players cannot bind or trigger the key, and nobody's view moves.
 - The API gains `teleportTokens`.
+- Checked on Foundry 14.371, which needed no changes here. The fix it brings for hidden tokens showing their measured movement to players covers this module's trail as well.
 
 ## 0.1.2
 
